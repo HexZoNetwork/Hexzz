@@ -721,6 +721,8 @@ local TXT = Color3.fromRGB(240, 240, 242)
 local DIM = Color3.fromRGB(150, 150, 156)
 local ONC = Color3.fromRGB(46, 204, 113)
 local OFFC = Color3.fromRGB(231, 76, 60)
+local ACCENT = Color3.fromRGB(79, 109, 245) -- modern indigo (your bubbles)
+local BUBBLE = Color3.fromRGB(35, 35, 41) -- hekz bubbles
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Hekz"
@@ -732,9 +734,9 @@ pcall(function()
 end)
 gui.Parent = parentGui
 
-local function tween(obj, props, time)
+local function tween(obj, props, time, style)
 	pcall(function()
-		TweenService:Create(obj, TweenInfo.new(time or 0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), props):Play()
+		TweenService:Create(obj, TweenInfo.new(time or 0.28, style or Enum.EasingStyle.Quart, Enum.EasingDirection.Out), props):Play()
 	end)
 end
 
@@ -756,7 +758,7 @@ local fabStroke = Instance.new("UIStroke") fabStroke.Color = BORDER fabStroke.Th
 local function fabPop()
 	tween(fab, { Size = UDim2.new(0, 44, 0, 44) }, 0.08)
 	task.delay(0.08, function()
-		tween(fab, { Size = UDim2.new(0, 52, 0, 52) }, 0.16)
+		tween(fab, { Size = UDim2.new(0, 52, 0, 52) }, 0.22, Enum.EasingStyle.Back)
 	end)
 end
 
@@ -768,19 +770,40 @@ panel.BackgroundColor3 = BG
 panel.BorderSizePixel = 0
 panel.Visible = false
 panel.Parent = gui
-local pCorner = Instance.new("UICorner") pCorner.CornerRadius = UDim.new(0, 14) pCorner.Parent = panel
+local pCorner = Instance.new("UICorner") pCorner.CornerRadius = UDim.new(0, 18) pCorner.Parent = panel
 local pStroke = Instance.new("UIStroke") pStroke.Color = BORDER pStroke.Thickness = 1 pStroke.Parent = panel
 
+-- Modern header: avatar + title + live status dot + close (drag by header)
+local avatar = Instance.new("TextLabel")
+avatar.Size = UDim2.new(0, 30, 0, 30)
+avatar.Position = UDim2.new(0, 12, 0, 11)
+avatar.BackgroundColor3 = ACCENT
+avatar.Text = "H"
+avatar.Font = Enum.Font.GothamBold
+avatar.TextSize = 15
+avatar.TextColor3 = Color3.fromRGB(255, 255, 255)
+avatar.Parent = panel
+local avCorner = Instance.new("UICorner") avCorner.CornerRadius = UDim.new(1, 0) avCorner.Parent = avatar
+
 local header = Instance.new("TextLabel")
-header.Size = UDim2.new(1, -64, 0, 40)
-header.Position = UDim2.new(0, 12, 0, 8)
+header.Size = UDim2.new(1, -116, 0, 40)
+header.Position = UDim2.new(0, 48, 0, 8)
 header.BackgroundTransparency = 1
-header.Text = "HEKZ · executor (" .. EXEC_NAME .. ")"
+header.Text = "HEKZ"
 header.Font = Enum.Font.GothamBold
-header.TextSize = 15
+header.TextSize = 16
 header.TextXAlignment = Enum.TextXAlignment.Left
 header.TextColor3 = TXT
 header.Parent = panel
+
+local statusDot = Instance.new("Frame")
+statusDot.Name = "Status"
+statusDot.Size = UDim2.new(0, 10, 0, 10)
+statusDot.Position = UDim2.new(1, -56, 0, 19)
+statusDot.BackgroundColor3 = (CFG.AIKey ~= "" and CFG.Mode == "ai") and ONC or DIM
+statusDot.BorderSizePixel = 0
+statusDot.Parent = panel
+local dotCorner = Instance.new("UICorner") dotCorner.CornerRadius = UDim.new(1, 0) dotCorner.Parent = statusDot
 
 -- Close (X) button: hides panel, H button reopens it
 local closeBtn = Instance.new("TextButton")
@@ -827,7 +850,7 @@ local sub = Instance.new("TextLabel")
 sub.Size = UDim2.new(1, -24, 0, 18)
 sub.Position = UDim2.new(0, 12, 0, 42)
 sub.BackgroundTransparency = 1
-sub.Text = "Luau only · no restriction (pretest) · " .. (CFG.AIKey ~= "" and "AI ON" or "offline (paste key below)")
+sub.Text = "executor (" .. EXEC_NAME .. ") · " .. (CFG.AIKey ~= "" and "AI ON" or "offline (paste key below)")
 sub.Font = Enum.Font.Gotham
 sub.TextSize = 12
 sub.TextXAlignment = Enum.TextXAlignment.Left
@@ -938,8 +961,8 @@ chatLayout.SortOrder = Enum.SortOrder.LayoutOrder
 chatLayout.Parent = chatLog
 
 local input = Instance.new("TextBox")
-input.Size = UDim2.new(1, -24, 0, 36)
-input.Position = UDim2.new(0, 12, 1, -46)
+input.Size = UDim2.new(1, -68, 0, 38)
+input.Position = UDim2.new(0, 12, 1, -48)
 input.BackgroundColor3 = SURF
 input.PlaceholderText = "talk here — run print('hi')…"
 input.PlaceholderColor3 = DIM
@@ -949,31 +972,133 @@ input.TextSize = 13
 input.TextColor3 = TXT
 input.ClearTextOnFocus = false
 input.Parent = panel
-local iCorner = Instance.new("UICorner") iCorner.CornerRadius = UDim.new(0, 10) iCorner.Parent = input
+local iCorner = Instance.new("UICorner") iCorner.CornerRadius = UDim.new(1, 0) iCorner.Parent = input
 local iStroke = Instance.new("UIStroke") iStroke.Color = BORDER iStroke.Parent = input
 
+local sendBtn = Instance.new("TextButton")
+sendBtn.Name = "Send"
+sendBtn.Size = UDim2.new(0, 38, 0, 38)
+sendBtn.Position = UDim2.new(1, -50, 1, -48)
+sendBtn.BackgroundColor3 = ACCENT
+sendBtn.Text = "»"
+sendBtn.Font = Enum.Font.GothamBold
+sendBtn.TextSize = 20
+sendBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+sendBtn.AutoButtonColor = false
+sendBtn.Parent = panel
+local sendCorner = Instance.new("UICorner") sendCorner.CornerRadius = UDim.new(1, 0) sendCorner.Parent = sendBtn
+
 local chatOrder = 0
-local function addChat(who, text)
-	text = tostring(text or "")
-	if text == "" then return end
-	chatOrder = chatOrder + 1
-	local lbl = Instance.new("TextLabel")
-	lbl.LayoutOrder = chatOrder
-	lbl.Size = UDim2.new(1, -4, 0, 0)
-	lbl.AutomaticSize = Enum.AutomaticSize.Y
-	lbl.BackgroundTransparency = 1
-	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.TextYAlignment = Enum.TextYAlignment.Top
-	lbl.TextWrapped = true
-	lbl.Font = Enum.Font.Gotham
-	lbl.TextSize = 12
-	lbl.TextColor3 = (who == "You") and TXT or DIM
-	lbl.Text = who .. ": " .. text:sub(1, 800)
-	lbl.Parent = chatLog
+local function scrollDown()
 	task.delay(0.05, function()
 		pcall(function()
 			chatLog.CanvasPosition = Vector2.new(0, math.max(0, chatLog.AbsoluteCanvasSize.Y - chatLog.AbsoluteWindowSize.Y))
 		end)
+	end)
+end
+local function maxBubbleW()
+	local w = 230
+	pcall(function()
+		local aw = chatLog.AbsoluteWindowSize.X
+		if aw and aw > 100 then w = aw - 70 end
+	end)
+	return math.max(120, w)
+end
+-- Modern chat bubble. Returns holder + body label (for the typing dots).
+local function makeBubble(mine, nameText, bodyText, animate)
+	chatOrder = chatOrder + 1
+	local holder = Instance.new("Frame")
+	holder.Name = "M"
+	holder.LayoutOrder = chatOrder
+	holder.Size = UDim2.new(1, 0, 0, 0)
+	holder.AutomaticSize = Enum.AutomaticSize.Y
+	holder.BackgroundTransparency = 1
+	holder.Parent = chatLog
+	local bubble = Instance.new("Frame")
+	bubble.AnchorPoint = mine and Vector2.new(1, 0) or Vector2.new(0, 0)
+	bubble.Position = mine and UDim2.new(1, -6, 0, 8) or UDim2.new(0, 6, 0, 8)
+	bubble.Size = UDim2.new(0, 0, 0, 0)
+	bubble.AutomaticSize = Enum.AutomaticSize.XY
+	bubble.BackgroundColor3 = mine and ACCENT or BUBBLE
+	bubble.BackgroundTransparency = animate and 1 or 0
+	bubble.BorderSizePixel = 0
+	bubble.Parent = holder
+	local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(0, 14) bc.Parent = bubble
+	local cap = Instance.new("UISizeConstraint") cap.MaxSize = Vector2.new(maxBubbleW(), 100000) cap.Parent = bubble
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 10) pad.PaddingRight = UDim.new(0, 10)
+	pad.PaddingTop = UDim.new(0, 8) pad.PaddingBottom = UDim.new(0, 8)
+	pad.Parent = bubble
+	local bl = Instance.new("UIListLayout")
+	bl.Padding = UDim.new(0, 2)
+	bl.SortOrder = Enum.SortOrder.LayoutOrder
+	bl.Parent = bubble
+	local nameLbl = nil
+	if nameText and nameText ~= "" then
+		nameLbl = Instance.new("TextLabel")
+		nameLbl.LayoutOrder = 1
+		nameLbl.Size = UDim2.new(1, 0, 0, 12)
+		nameLbl.AutomaticSize = Enum.AutomaticSize.Y
+		nameLbl.BackgroundTransparency = 1
+		nameLbl.Font = Enum.Font.GothamBold
+		nameLbl.TextSize = 10
+		nameLbl.TextColor3 = DIM
+		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+		nameLbl.Text = nameText
+		nameLbl.TextTransparency = animate and 1 or 0
+		nameLbl.Parent = bubble
+	end
+	local msg = Instance.new("TextLabel")
+	msg.LayoutOrder = 2
+	msg.Size = UDim2.new(1, 0, 0, 0)
+	msg.AutomaticSize = Enum.AutomaticSize.Y
+	msg.BackgroundTransparency = 1
+	msg.Font = Enum.Font.Gotham
+	msg.TextSize = 13
+	msg.TextColor3 = mine and Color3.fromRGB(255, 255, 255) or TXT
+	msg.TextXAlignment = Enum.TextXAlignment.Left
+	msg.TextYAlignment = Enum.TextYAlignment.Top
+	msg.TextWrapped = true
+	msg.Text = tostring(bodyText or ""):sub(1, 800)
+	msg.TextTransparency = animate and 1 or 0
+	msg.Parent = bubble
+	if animate then
+		local target = mine and UDim2.new(1, -6, 0, 0) or UDim2.new(0, 6, 0, 0)
+		tween(bubble, { BackgroundTransparency = 0, Position = target }, 0.22)
+		tween(msg, { TextTransparency = 0 }, 0.22)
+		if nameLbl then tween(nameLbl, { TextTransparency = 0 }, 0.22) end
+	end
+	scrollDown()
+	return holder, msg
+end
+local function addChat(who, text)
+	text = tostring(text or "")
+	if text == "" then return end
+	if who == "You" then
+		makeBubble(true, "", text, true)
+	else
+		makeBubble(false, "HEKZ", text, true)
+	end
+end
+-- Typing indicator bubble ("..." pulsing) while the brain works
+local typingHolder, typingDots, typingStop = nil, nil, false
+local function hideTyping()
+	typingStop = true
+	if typingHolder then pcall(function() typingHolder:Destroy() end) end
+	typingHolder, typingDots = nil, nil
+end
+local function showTyping()
+	hideTyping()
+	typingStop = false
+	typingHolder, typingDots = makeBubble(false, "HEKZ", ".  ", false)
+	task.spawn(function()
+		local frames = { ".  ", ".. ", "..." }
+		local i = 0
+		while not typingStop and typingHolder and typingHolder.Parent do
+			i = i % 3 + 1
+			pcall(function() typingDots.Text = frames[i] end)
+			task.wait(0.35)
+		end
 	end)
 end
 
@@ -984,7 +1109,8 @@ local function maskKey(k)
 	return "key set (…" .. k:sub(-4) .. ") — paste new to replace"
 end
 local function refreshSub()
-	sub.Text = "Luau only · no restriction (pretest) · " .. ((CFG.AIKey ~= "" and CFG.Mode == "ai") and "AI ON" or "offline")
+	sub.Text = "executor (" .. EXEC_NAME .. ") · " .. ((CFG.AIKey ~= "" and CFG.Mode == "ai") and "AI ON" or "offline")
+	statusDot.BackgroundColor3 = ((CFG.AIKey ~= "" and CFG.Mode == "ai") and ONC or DIM)
 end
 if CFG.AIKey ~= "" then
 	keyBox.PlaceholderText = maskKey(CFG.AIKey)
@@ -1018,11 +1144,11 @@ for n in pairs(CFG.Tools) do table.insert(toolNames, n) end
 table.sort(toolNames)
 for _, key in ipairs(toolNames) do
 	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, 0, 0, 36)
+	row.Size = UDim2.new(1, 0, 0, 32)
 	row.BackgroundColor3 = SURF
 	row.BorderSizePixel = 0
 	row.Parent = list
-	local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 10) c.Parent = row
+	local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 12) c.Parent = row
 	local lbl = Instance.new("TextLabel")
 	lbl.Size = UDim2.new(1, -84, 1, 0)
 	lbl.Position = UDim2.new(0, 10, 0, 0)
@@ -1058,8 +1184,9 @@ local function setOpen(v)
 	if v then
 		panel.Visible = true
 		panel.BackgroundTransparency = 1
-		panel.Position = UDim2.new(anchor.X.Scale, anchor.X.Offset, anchor.Y.Scale, anchor.Y.Offset + 20)
-		tween(panel, { BackgroundTransparency = 0, Position = anchor }, 0.28)
+		panel.Position = UDim2.new(anchor.X.Scale, anchor.X.Offset, anchor.Y.Scale, anchor.Y.Offset + 24)
+		tween(panel, { BackgroundTransparency = 0 }, 0.22)
+		tween(panel, { Position = anchor }, 0.34, Enum.EasingStyle.Back)
 		tween(fab, { Rotation = 45 }, 0.28)
 	else
 		tween(panel, {
@@ -1074,14 +1201,15 @@ fab.MouseButton1Click:Connect(function() fabPop() setOpen(not open) end)
 closeBtn.MouseButton1Click:Connect(function() setOpen(false) end)
 
 local busy = false
-input.FocusLost:Connect(function(enter)
-	if not enter or #input.Text == 0 or busy then return end
+local function sendMsg()
+	if busy or #input.Text == 0 then return end
 	local msg = input.Text
 	input.Text = ""
 	input.PlaceholderText = "thinking…"
 	addChat("You", msg)
 	pushHist("user", msg)
 	busy = true
+	showTyping()
 	task.spawn(function()
 		local reply
 		if CFG.Mode == "ai" and CFG.AIKey ~= "" then
@@ -1090,11 +1218,22 @@ input.FocusLost:Connect(function(enter)
 		else
 			reply = routeLocal(msg)
 		end
+		hideTyping()
 		pushHist("assistant", reply)
 		addChat("Hekz", reply)
 		input.PlaceholderText = tostring(reply):sub(1, 60)
 		busy = false
 	end)
+end
+input.FocusLost:Connect(function(enter)
+	if enter then sendMsg() end
+end)
+sendBtn.MouseButton1Click:Connect(function()
+	tween(sendBtn, { Size = UDim2.new(0, 32, 0, 32) }, 0.07)
+	task.delay(0.07, function()
+		tween(sendBtn, { Size = UDim2.new(0, 38, 0, 38) }, 0.14, Enum.EasingStyle.Back)
+	end)
+	sendMsg()
 end)
 
 addChat("Hekz", "Loaded on " .. EXEC_NAME .. " (" .. ((CFG.AIKey ~= "" and CFG.Mode == "ai") and "AI ON" or "offline — paste key in AI KEY box") .. "). Powers: time | calc | scan | parts near | find | info | tree | spawn | teleport | read | exec Luau. Just talk here.")
