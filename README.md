@@ -66,21 +66,45 @@ restriction, chain up to `Brain.MaxRounds` steps. Server sends
 | `HekzGui.client.lua` | LocalScript `HekzGui` | `StarterPlayer > StarterPlayerScripts` |
 | `go-bridge/` | LEGACY, unused | ignore — kept only for reference, game no longer calls it |
 
-## Executor build (no Studio, no plugin)
+## How to run in executor (no Studio, no plugin)
 
-`HekzExecutor.lua` is all-in-one — paste it into your executor and run,
-or loadstring it. Same tools + same dark H panel, adapted for client context:
+`HekzExecutor.lua` is all-in-one — one file, everything inside
+(tools + AI brain + dark H panel). Works on Synapse / Script-Ware /
+Delta / Fluxus / Solara style executors.
 
-```lua
--- option A: paste the whole file into your executor, Execute
--- option B: host it raw, then:
-loadstring(game:HttpGet("https://your-link/HekzExecutor.lua"))()
-```
+**Step by step:**
+1. Join any game on the Roblox client where your executor works.
+2. Attach/open your executor.
+3. Run it — pick ONE:
+   - **A. Paste:** copy the whole `HekzExecutor.lua` → paste into the
+     executor editor → **Execute**.
+   - **B. Loadstring:** host the file raw (e.g. GitHub), then run:
+     ```lua
+     loadstring(game:HttpGet("https://raw.githubusercontent.com/HexZoNetwork/Hexzz/refs/heads/main/HekzExecutor.lua"))()
+     ```
+   - ⚠️ Run `HekzExecutor.lua` — NOT `HekzServer.lua` (that one is the
+     Studio build and can never run in an executor).
+4. The black **H** button appears (bottom-right). The panel opens by itself
+   on first run — drag it by the header, close with **X**, reopen with **H**.
+5. Talk in the panel input (NOT bubble chat): `scan the map`,
+   `parts near me`, `find Spawn`, `spawn a part`, `run print("hi")`.
+6. AI key (optional): paste it into the panel's **AI KEY** box → **SAVE**
+   (box clears, shows `key set (…XXXX)`), tap the **AI/LOCAL** pill to
+   green AI. Without a key it runs the offline brain (keywords still work).
+   Key stays on your client only. (`getgenv().HEKZ_AIKEY` before running
+   still works too.)
 
-Key setup (in the panel, no pre-editing needed):
-1. Paste your key into the **AI KEY** box → **SAVE** (box clears, shows `key set (…XXXX)`).
-2. Tap the **AI/LOCAL** pill to switch modes (green AI / red LOCAL).
-3. Key stays on your client only. (`getgenv().HEKZ_AIKEY` before running still works too.)
+**If nothing happens:**
+- Make sure you executed `HekzExecutor.lua`, not `HekzServer.lua`.
+- Raw GitHub caches a few minutes after you re-upload — wait ~5 min
+  and re-execute if the UI looks outdated.
+- Run it wrapped to see the real error in your executor console:
+  ```lua
+  local ok, err = pcall(function()
+      loadstring(game:HttpGet("https://raw.githubusercontent.com/HexZoNetwork/Hexzz/refs/heads/main/HekzExecutor.lua"))()
+  end)
+  if not ok then warn("[Hekz] failed: " .. tostring(err)) end
+  ```
 
 Notes:
 - HTTP uses `syn.request` / `http_request` / `request` when present, else

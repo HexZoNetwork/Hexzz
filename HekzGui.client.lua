@@ -45,15 +45,17 @@ local fab = Instance.new("TextButton")
 fab.Name = "Fab"
 fab.Size = UDim2.new(0, 52, 0, 52)
 fab.Position = UDim2.new(1, -68, 1, -140)
-fab.BackgroundColor3 = SURF
+fab.BackgroundColor3 = Color3.fromRGB(10, 10, 12) -- black H button
 fab.Text = "H"
 fab.Font = Enum.Font.GothamBold
 fab.TextSize = 22
-fab.TextColor3 = TXT
+fab.TextColor3 = Color3.fromRGB(255, 255, 255)
 fab.AutoButtonColor = false
+fab.ZIndex = 50
+fab.LayoutOrder = 999
 fab.Parent = gui
 local fabCorner = Instance.new("UICorner") fabCorner.CornerRadius = UDim.new(1, 0) fabCorner.Parent = fab
-local fabStroke = Instance.new("UIStroke") fabStroke.Color = BORDER fabStroke.Thickness = 1 fabStroke.Parent = fab
+local fabStroke = Instance.new("UIStroke") fabStroke.Color = BORDER fabStroke.Thickness = 2 fabStroke.Parent = fab
 
 -- Panel (taller: toggles + GUI chat log + input). GUI chat is PRIMARY.
 local panel = Instance.new("Frame")
@@ -68,7 +70,7 @@ local pCorner = Instance.new("UICorner") pCorner.CornerRadius = UDim.new(0, 14) 
 local pStroke = Instance.new("UIStroke") pStroke.Color = BORDER pStroke.Thickness = 1 pStroke.Parent = panel
 
 local header = Instance.new("TextLabel")
-header.Size = UDim2.new(1, -24, 0, 40)
+header.Size = UDim2.new(1, -64, 0, 40)
 header.Position = UDim2.new(0, 12, 0, 8)
 header.BackgroundTransparency = 1
 header.Text = "HEKZ  ·  tools"
@@ -77,6 +79,48 @@ header.TextSize = 16
 header.TextXAlignment = Enum.TextXAlignment.Left
 header.TextColor3 = TXT
 header.Parent = panel
+
+-- Close (X) button: hides panel, H button reopens it
+local closeBtn = Instance.new("TextButton")
+closeBtn.Name = "Close"
+closeBtn.Size = UDim2.new(0, 28, 0, 28)
+closeBtn.Position = UDim2.new(1, -38, 0, 12)
+closeBtn.BackgroundColor3 = SURF
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.TextColor3 = OFF
+closeBtn.AutoButtonColor = false
+closeBtn.Parent = panel
+local xCorner = Instance.new("UICorner") xCorner.CornerRadius = UDim.new(1, 0) xCorner.Parent = closeBtn
+local xStroke = Instance.new("UIStroke") xStroke.Color = BORDER xStroke.Thickness = 1 xStroke.Parent = closeBtn
+
+-- Draggable panel: drag by the header (mouse + touch)
+local UserInputService = game:GetService("UserInputService")
+local anchor = panel.Position -- remembered spot; open/close animates around it
+do
+	local dragging, dragStart, startPos = false, nil, nil
+	header.Active = true
+	header.InputBegan:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = inp.Position
+			startPos = panel.Position
+			inp.Changed:Connect(function()
+				if inp.UserInputState == Enum.UserInputState.End then
+					dragging = false
+					anchor = panel.Position
+				end
+			end)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(inp)
+		if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+			local d = inp.Position - dragStart
+			panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+end
 
 local sub = Instance.new("TextLabel")
 sub.Size = UDim2.new(1, -24, 0, 18)
@@ -264,16 +308,22 @@ local function setOpen(v)
 	if v then
 		panel.Visible = true
 		panel.BackgroundTransparency = 1
-		panel.Position = UDim2.new(1, -364, 1, -680) -- start 20px lower
-		tween(panel, { BackgroundTransparency = 0, Position = UDim2.new(1, -364, 1, -700) }, T)
+		panel.Position = UDim2.new(anchor.X.Scale, anchor.X.Offset, anchor.Y.Scale, anchor.Y.Offset + 20)
+		tween(panel, { BackgroundTransparency = 0, Position = anchor }, T)
 		tween(fab, { Rotation = 45 }, T)
 	else
-		tween(panel, { BackgroundTransparency = 1, Position = UDim2.new(1, -364, 1, -680) }, T * 0.8)
+		tween(panel, { BackgroundTransparency = 1, Position = UDim2.new(anchor.X.Scale, anchor.X.Offset, anchor.Y.Scale, anchor.Y.Offset + 20) }, T * 0.8)
 		tween(fab, { Rotation = 0 }, T)
 		task.delay(T * 0.8, function() if not open then panel.Visible = false end end)
 	end
 end
-fab.MouseButton1Click:Connect(function() setOpen(not open) end)
+local function fabPop()
+	tween(fab, { Size = UDim2.new(0, 44, 0, 44) }, 0.08, Enum.EasingStyle.Quad)
+	task.wait(0.08)
+	tween(fab, { Size = UDim2.new(0, 52, 0, 52) }, 0.16, Enum.EasingStyle.Back)
+end
+fab.MouseButton1Click:Connect(function() fabPop() setOpen(not open) end)
+closeBtn.MouseButton1Click:Connect(function() setOpen(false) end)
 
 -- PRIMARY inbox: server fires HekzReply to this player (full text, GUI log)
 replyEvent.OnClientEvent:Connect(function(msg)

@@ -17,6 +17,7 @@
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 local LOAD = loadstring or load
@@ -645,7 +646,7 @@ local function askAI(text)
 	local rounds = math.max(1, math.min(tonumber(CFG.MaxRounds) or 4, 8))
 	for _ = 1, rounds do
 		local body = { model = model, messages = messages, temperature = 0.7, max_tokens = 512 }
-		if #toolDefs > 0 then body.tools = toolDefs body.tool_choice = "auto" end
+		if #toolDefs > 0 then body.tools = toolDefs; body.tool_choice = "auto" end
 		local ok, dec = pcall(httpPOST, url, body, key)
 		if not ok then
 			return "AI unreachable (" .. tostring(dec):sub(1, 150) .. "). Using local brain.\n" .. routeLocal(text)
@@ -741,15 +742,23 @@ local fab = Instance.new("TextButton")
 fab.Name = "Fab"
 fab.Size = UDim2.new(0, 52, 0, 52)
 fab.Position = UDim2.new(1, -68, 1, -140)
-fab.BackgroundColor3 = SURF
+fab.BackgroundColor3 = Color3.fromRGB(10, 10, 12) -- black H button
 fab.Text = "H"
 fab.Font = Enum.Font.GothamBold
 fab.TextSize = 22
-fab.TextColor3 = TXT
+fab.TextColor3 = Color3.fromRGB(255, 255, 255)
 fab.AutoButtonColor = false
+fab.ZIndex = 50
+fab.LayoutOrder = 999
 fab.Parent = gui
 local fabCorner = Instance.new("UICorner") fabCorner.CornerRadius = UDim.new(1, 0) fabCorner.Parent = fab
-local fabStroke = Instance.new("UIStroke") fabStroke.Color = BORDER fabStroke.Thickness = 1 fabStroke.Parent = fab
+local fabStroke = Instance.new("UIStroke") fabStroke.Color = BORDER fabStroke.Thickness = 2 fabStroke.Parent = fab
+local function fabPop()
+	tween(fab, { Size = UDim2.new(0, 44, 0, 44) }, 0.08)
+	task.delay(0.08, function()
+		tween(fab, { Size = UDim2.new(0, 52, 0, 52) }, 0.16)
+	end)
+end
 
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
@@ -763,7 +772,7 @@ local pCorner = Instance.new("UICorner") pCorner.CornerRadius = UDim.new(0, 14) 
 local pStroke = Instance.new("UIStroke") pStroke.Color = BORDER pStroke.Thickness = 1 pStroke.Parent = panel
 
 local header = Instance.new("TextLabel")
-header.Size = UDim2.new(1, -24, 0, 40)
+header.Size = UDim2.new(1, -64, 0, 40)
 header.Position = UDim2.new(0, 12, 0, 8)
 header.BackgroundTransparency = 1
 header.Text = "HEKZ · executor (" .. EXEC_NAME .. ")"
@@ -772,6 +781,47 @@ header.TextSize = 15
 header.TextXAlignment = Enum.TextXAlignment.Left
 header.TextColor3 = TXT
 header.Parent = panel
+
+-- Close (X) button: hides panel, H button reopens it
+local closeBtn = Instance.new("TextButton")
+closeBtn.Name = "Close"
+closeBtn.Size = UDim2.new(0, 28, 0, 28)
+closeBtn.Position = UDim2.new(1, -38, 0, 12)
+closeBtn.BackgroundColor3 = SURF
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.TextColor3 = OFFC
+closeBtn.AutoButtonColor = false
+closeBtn.Parent = panel
+local xCorner = Instance.new("UICorner") xCorner.CornerRadius = UDim.new(1, 0) xCorner.Parent = closeBtn
+local xStroke = Instance.new("UIStroke") xStroke.Color = BORDER xStroke.Thickness = 1 xStroke.Parent = closeBtn
+
+-- Draggable panel: drag by the header (mouse + touch, executor-safe)
+local anchor = panel.Position -- remembered spot; open/close animates around it
+do
+	local dragging, dragStart, startPos = false, nil, nil
+	header.Active = true
+	header.InputBegan:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = inp.Position
+			startPos = panel.Position
+			inp.Changed:Connect(function()
+				if inp.UserInputState == Enum.UserInputState.End then
+					dragging = false
+					anchor = panel.Position
+				end
+			end)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(inp)
+		if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+			local d = inp.Position - dragStart
+			panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+end
 
 local sub = Instance.new("TextLabel")
 sub.Size = UDim2.new(1, -24, 0, 18)
@@ -1008,15 +1058,20 @@ local function setOpen(v)
 	if v then
 		panel.Visible = true
 		panel.BackgroundTransparency = 1
-		tween(panel, { BackgroundTransparency = 0 }, 0.28)
+		panel.Position = UDim2.new(anchor.X.Scale, anchor.X.Offset, anchor.Y.Scale, anchor.Y.Offset + 20)
+		tween(panel, { BackgroundTransparency = 0, Position = anchor }, 0.28)
 		tween(fab, { Rotation = 45 }, 0.28)
 	else
-		tween(panel, { BackgroundTransparency = 1 }, 0.2)
+		tween(panel, {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(anchor.X.Scale, anchor.X.Offset, anchor.Y.Scale, anchor.Y.Offset + 20),
+		}, 0.2)
 		tween(fab, { Rotation = 0 }, 0.28)
 		task.delay(0.22, function() if not open then panel.Visible = false end end)
 	end
 end
-fab.MouseButton1Click:Connect(function() setOpen(not open) end)
+fab.MouseButton1Click:Connect(function() fabPop() setOpen(not open) end)
+closeBtn.MouseButton1Click:Connect(function() setOpen(false) end)
 
 local busy = false
 input.FocusLost:Connect(function(enter)
