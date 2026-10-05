@@ -230,16 +230,26 @@ local function askAI(text, ctx, isStale)
 		if isStale() then return nil end
 		local dec, errText = query()
 		if not dec then return errText end
-		if type(dec) ~= "table" or type(dec.choices) ~= "table" or #dec.choices == 0 then
-			local errMsg = ""
-			pcall(function() errMsg = tostring(dec.error and dec.error.message or "") end)
-			if errMsg ~= "" and errMsg:lower():find("tool") and #toolDefs > 0 then
+		if type(dec) ~= "table" then
+			local raw = tostring(dec):sub(1, 200)
+			return "AI gave a non-JSON reply (" .. raw .. "). Check the gateway URL, then try again."
+		end
+		-- provider error object? surface its message (bad key / bad model id most common)
+		local provErr = ""
+		pcall(function()
+			local e = dec.error
+			if type(e) == "table" then provErr = tostring(e.message or e.msg or e.code or "")
+			elseif e ~= nil then provErr = tostring(e) end
+		end)
+		if provErr ~= "" then
+			if provErr:lower():find("tool") and #toolDefs > 0 then
 				toolDefs = {} -- provider rejects tools: go tool-less, ```tool text still works
 				continue
 			end
-			return "AI gave an unreadable reply (" .. errMsg:sub(1, 120) .. "). Try again."
+			return "AI error: " .. provErr:sub(1, 220)
 		end
-		local msg = dec.choices[1].message or {}
+		local ch = type(dec.choices) == "table" and dec.choices or {}
+		local msg = (ch[1] and ch[1].message) or {}
 		local content = tostring(msg.content or "")
 		local calls = msg.tool_calls
 		local hasCalls = type(calls) == "table" and #calls > 0

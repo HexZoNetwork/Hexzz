@@ -71,7 +71,21 @@ markB(c:find("= 20", 1, true) ~= nil, "agent ran calc, echoed result", c:sub(1, 
 local f = say("fenced please")
 markB(f:find("81", 1, true) ~= nil, "text tool-call ran (9*9)", f:sub(1, 140))
 
--- 4. no key = honest offline notice, never a fake chat reply
+-- 4. provider error shapes surface verbatim (never "unreadable ()")
+local savedResponder = T.aiResponder
+T.aiResponder = function()
+	return { error = "Model not found" }
+end
+local e1 = say("hello again")
+markB(e1 == "AI error: Model not found", "string error surfaced", e1:sub(1, 80))
+T.aiResponder = function()
+	return { error = { message = "bad key", code = 401 } }
+end
+local e2 = say("hello again")
+markB(e2 == "AI error: bad key", "table error surfaced", e2:sub(1, 80))
+T.aiResponder = savedResponder
+
+-- 5. no key = honest offline notice, never a fake chat reply
 T.Config.Brain.AIKey.Value = ""
 local off = say("hi")
 markB(off:find("No AI key", 1, true) ~= nil, "no-key notice", off:sub(1, 100))

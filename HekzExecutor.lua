@@ -730,13 +730,23 @@ local function askAI(text)
 		if not ok then
 			return "AI request failed (" .. tostring(dec):sub(1, 150) .. "). Try again in a bit."
 		end
-		if type(dec) ~= "table" or type(dec.choices) ~= "table" or #dec.choices == 0 then
-			local errM = ""
-			pcall(function() errM = tostring(dec.error and dec.error.message or "") end)
-			if errM:lower():find("tool") and #toolDefs > 0 then toolDefs = {} continue end
-			return "AI gave an unreadable reply (" .. tostring(errM):sub(1, 120) .. "). Try again."
+		if type(dec) ~= "table" then
+			local raw = tostring(dec):sub(1, 200)
+			return "AI gave a non-JSON reply (" .. raw .. "). Check the gateway URL, then try again."
 		end
-		local msg = dec.choices[1].message or {}
+		-- provider error object? surface its message (bad key / bad model id most common)
+		local provErr = ""
+		pcall(function()
+			local e = dec.error
+			if type(e) == "table" then provErr = tostring(e.message or e.msg or e.code or "")
+			elseif e ~= nil then provErr = tostring(e) end
+		end)
+		if provErr ~= "" then
+			if provErr:lower():find("tool") and #toolDefs > 0 then toolDefs = {} continue end
+			return "AI error: " .. provErr:sub(1, 220)
+		end
+		local ch = type(dec.choices) == "table" and dec.choices or {}
+		local msg = (ch[1] and ch[1].message) or {}
 		local content = tostring(msg.content or "")
 		local calls = msg.tool_calls
 		local hasCalls = type(calls) == "table" and #calls > 0
