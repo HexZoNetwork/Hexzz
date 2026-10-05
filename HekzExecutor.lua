@@ -10,7 +10,7 @@
 --   -- getgenv().HEKZ_AIBASE = "https://9router.kliksosmed.id/v1"
 --   -- getgenv().HEKZ_MODEL = "jmbot/mimo-v2.6-flash"
 --
--- GUI: same dark H panel (toggles + chat log + input). Chat in the panel.
+-- GUI: Luna Interface Suite (Chat + Console + Setup + Tools tabs).
 -- exec = Luau ONLY via loadstring in YOUR executor context (never Go).
 
 -- ============================== BOOT ==============================
@@ -821,855 +821,246 @@ local function askAI(text)
 	return "(max rounds reached — ask me to continue)"
 end
 
--- ============================== GUI (same dark H panel) ==============================
-local parentGui = nil
-pcall(function()
-	if typeof(gethui) == "function" then parentGui = gethui()
-	elseif typeof(get_hui) == "function" then parentGui = get_hui() end
-end)
-if not parentGui then
-	pcall(function() parentGui = game:GetService("CoreGui") end)
-end
-if not parentGui then
-	parentGui = LocalPlayer:WaitForChild("PlayerGui")
-end
-pcall(function()
-	local old = parentGui:FindFirstChild("Hekz")
-	if old then old:Destroy() end
-end)
-
-local BG = Color3.fromRGB(18, 18, 20)
-local SURF = Color3.fromRGB(30, 30, 34)
-local BORDER = Color3.fromRGB(70, 70, 76)
-local TXT = Color3.fromRGB(240, 240, 242)
-local DIM = Color3.fromRGB(150, 150, 156)
-local ONC = Color3.fromRGB(46, 204, 113)
-local OFFC = Color3.fromRGB(231, 76, 60)
-local ACCENT = Color3.fromRGB(79, 109, 245) -- modern indigo (your bubbles)
-local BUBBLE = Color3.fromRGB(35, 35, 41) -- hekz bubbles
-
-local gui = Instance.new("ScreenGui")
-gui.Name = "Hekz"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-pcall(function() gui.DisplayOrder = 999 end)
-pcall(function()
-	if typeof(protectgui) == "function" then protectgui(gui) end
-end)
-gui.Parent = parentGui
-
-local function tween(obj, props, time, style)
-	pcall(function()
-		TweenService:Create(obj, TweenInfo.new(time or 0.28, style or Enum.EasingStyle.Quart, Enum.EasingDirection.Out), props):Play()
-	end)
-end
-
-local fab = Instance.new("TextButton")
-fab.Name = "Fab"
-fab.Size = UDim2.new(0, 52, 0, 52)
-fab.Position = UDim2.new(1, -68, 1, -140)
-fab.BackgroundColor3 = Color3.fromRGB(10, 10, 12) -- black H button
-fab.Text = "H"
-fab.Font = Enum.Font.GothamBold
-fab.TextSize = 22
-fab.TextColor3 = Color3.fromRGB(255, 255, 255)
-fab.AutoButtonColor = false
-fab.ZIndex = 50
-fab.LayoutOrder = 999
-fab.Parent = gui
-local fabCorner = Instance.new("UICorner") fabCorner.CornerRadius = UDim.new(1, 0) fabCorner.Parent = fab
-local fabStroke = Instance.new("UIStroke") fabStroke.Color = BORDER fabStroke.Thickness = 2 fabStroke.Parent = fab
-local function fabPop()
-	tween(fab, { Size = UDim2.new(0, 44, 0, 44) }, 0.08)
-	task.delay(0.08, function()
-		tween(fab, { Size = UDim2.new(0, 52, 0, 52) }, 0.22, Enum.EasingStyle.Back)
-	end)
-end
-
-local panel = Instance.new("Frame")
-panel.Name = "Panel"
-panel.Size = UDim2.new(0, 340, 0, 620)
-panel.Position = UDim2.new(1, -364, 1, -780)
-panel.BackgroundColor3 = BG
-panel.BorderSizePixel = 0
-panel.Visible = false
-panel.Parent = gui
-local pCorner = Instance.new("UICorner") pCorner.CornerRadius = UDim.new(0, 18) pCorner.Parent = panel
-local pStroke = Instance.new("UIStroke") pStroke.Color = BORDER pStroke.Thickness = 1 pStroke.Parent = panel
-
--- Modern header: avatar + title + live status dot + close (drag by header)
-local avatar = Instance.new("TextLabel")
-avatar.Size = UDim2.new(0, 30, 0, 30)
-avatar.Position = UDim2.new(0, 12, 0, 11)
-avatar.BackgroundColor3 = ACCENT
-avatar.Text = "H"
-avatar.Font = Enum.Font.GothamBold
-avatar.TextSize = 15
-avatar.TextColor3 = Color3.fromRGB(255, 255, 255)
-avatar.Parent = panel
-local avCorner = Instance.new("UICorner") avCorner.CornerRadius = UDim.new(1, 0) avCorner.Parent = avatar
-
-local header = Instance.new("TextLabel")
-header.Size = UDim2.new(1, -116, 0, 40)
-header.Position = UDim2.new(0, 48, 0, 8)
-header.BackgroundTransparency = 1
-header.Text = "HEKZ"
-header.Font = Enum.Font.GothamBold
-header.TextSize = 16
-header.TextXAlignment = Enum.TextXAlignment.Left
-header.TextColor3 = TXT
-header.Parent = panel
-
-local statusDot = Instance.new("Frame")
-statusDot.Name = "Status"
-statusDot.Size = UDim2.new(0, 10, 0, 10)
-statusDot.Position = UDim2.new(1, -56, 0, 19)
-statusDot.BackgroundColor3 = (CFG.AIKey ~= "" and CFG.Mode == "ai") and ONC or DIM
-statusDot.BorderSizePixel = 0
-statusDot.Parent = panel
-local dotCorner = Instance.new("UICorner") dotCorner.CornerRadius = UDim.new(1, 0) dotCorner.Parent = statusDot
-
--- Close (X) button: hides panel, H button reopens it
-local closeBtn = Instance.new("TextButton")
-closeBtn.Name = "Close"
-closeBtn.Size = UDim2.new(0, 28, 0, 28)
-closeBtn.Position = UDim2.new(1, -38, 0, 12)
-closeBtn.BackgroundColor3 = SURF
-closeBtn.Text = "X"
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 14
-closeBtn.TextColor3 = OFFC
-closeBtn.AutoButtonColor = false
-closeBtn.Parent = panel
-local xCorner = Instance.new("UICorner") xCorner.CornerRadius = UDim.new(1, 0) xCorner.Parent = closeBtn
-local xStroke = Instance.new("UIStroke") xStroke.Color = BORDER xStroke.Thickness = 1 xStroke.Parent = closeBtn
-
--- Draggable panel: drag by the header (mouse + touch, executor-safe)
-local anchor = panel.Position -- remembered spot; open/close animates around it
+-- ============================== GUI (Luna Interface Suite) ==============================
+-- Panel is now Luna: Chat tab + Console tab (full errors) + Setup + Tools.
+local Luna = nil
 do
-	local dragging, dragStart, startPos = false, nil, nil
-	header.Active = true
-	header.InputBegan:Connect(function(inp)
-		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			dragStart = inp.Position
-			startPos = panel.Position
-			inp.Changed:Connect(function()
-				if inp.UserInputState == Enum.UserInputState.End then
-					dragging = false
-					anchor = panel.Position
-				end
-			end)
-		end
+	local ok, lib = pcall(function()
+		return loadstring(game:HttpGet("https://raw.githubusercontent.com/Nebula-Softworks/Luna-Interface-Suite/master/source.lua"))()
 	end)
-	UserInputService.InputChanged:Connect(function(inp)
-		if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
-			local d = inp.Position - dragStart
-			panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-		end
-	end)
+	if ok and type(lib) == "table" then Luna = lib end
+end
+if not Luna then
+	clog("gui", "Luna load failed — check executor HTTP (game:HttpGet to raw.githubusercontent.com).")
+	error("Hekz: could not load Luna UI library. Allow HTTP and re-execute.")
 end
 
-local sub = Instance.new("TextLabel")
-sub.Size = UDim2.new(1, -24, 0, 18)
-sub.Position = UDim2.new(0, 12, 0, 42)
-sub.BackgroundTransparency = 1
-sub.Text = "executor (" .. EXEC_NAME .. ") · " .. (CFG.AIKey ~= "" and "AI ON" or "offline (paste key below)")
-sub.Font = Enum.Font.Gotham
-sub.TextSize = 12
-sub.TextXAlignment = Enum.TextXAlignment.Left
-sub.TextColor3 = DIM
-sub.Parent = panel
+local Window = Luna:CreateWindow({
+	Name = "Hekz",
+	Subtitle = "executor (" .. EXEC_NAME .. ")",
+	LogoID = "6031097225",
+	LoadingEnabled = true,
+	LoadingTitle = "Hekz",
+	LoadingSubtitle = "by Hekz",
+	KeySystem = false,
+})
 
--- AI KEY box (set key in-GUI, stays on your client, also syncs getgenv)
-local keyLabel = Instance.new("TextLabel")
-keyLabel.Size = UDim2.new(1, -24, 0, 16)
-keyLabel.Position = UDim2.new(0, 12, 0, 62)
-keyLabel.BackgroundTransparency = 1
-keyLabel.Text = "AI KEY (stays on your client)"
-keyLabel.Font = Enum.Font.GothamBold
-keyLabel.TextSize = 11
-keyLabel.TextXAlignment = Enum.TextXAlignment.Left
-keyLabel.TextColor3 = DIM
-keyLabel.Parent = panel
+local ChatTab = Window:CreateTab({ Name = "Chat", Icon = "chat", ImageSource = "Material" })
+local ConsoleTab = Window:CreateTab({ Name = "Console", Icon = "terminal", ImageSource = "Material" })
+local SetupTab = Window:CreateTab({ Name = "Setup", Icon = "settings", ImageSource = "Material" })
+local ToolsTab = Window:CreateTab({ Name = "Tools", Icon = "build", ImageSource = "Material" })
 
-local keyBox = Instance.new("TextBox")
-keyBox.Size = UDim2.new(1, -136, 0, 32)
-keyBox.Position = UDim2.new(0, 12, 0, 80)
-keyBox.BackgroundColor3 = SURF
-keyBox.PlaceholderText = "paste key here…"
-keyBox.PlaceholderColor3 = DIM
-keyBox.Text = ""
-keyBox.Font = Enum.Font.Gotham
-keyBox.TextSize = 12
-keyBox.TextColor3 = TXT
-keyBox.ClearTextOnFocus = false
-keyBox.Parent = panel
-local kCorner = Instance.new("UICorner") kCorner.CornerRadius = UDim.new(0, 10) kCorner.Parent = keyBox
-local kStroke = Instance.new("UIStroke") kStroke.Color = BORDER kStroke.Parent = keyBox
-
-local saveBtn = Instance.new("TextButton")
-saveBtn.Size = UDim2.new(0, 56, 0, 32)
-saveBtn.Position = UDim2.new(1, -124, 0, 80)
-saveBtn.BackgroundColor3 = SURF
-saveBtn.Text = "SAVE"
-saveBtn.Font = Enum.Font.GothamBold
-saveBtn.TextSize = 12
-saveBtn.TextColor3 = TXT
-saveBtn.AutoButtonColor = false
-saveBtn.Parent = panel
-local sCorner = Instance.new("UICorner") sCorner.CornerRadius = UDim.new(0, 10) sCorner.Parent = saveBtn
-local sStroke = Instance.new("UIStroke") sStroke.Color = BORDER sStroke.Parent = saveBtn
-
-local modeBtn = Instance.new("TextButton")
-modeBtn.Size = UDim2.new(0, 56, 0, 32)
-modeBtn.Position = UDim2.new(1, -64, 0, 80)
-modeBtn.Text = (CFG.Mode == "ai") and "AI" or "LOCAL"
-modeBtn.Font = Enum.Font.GothamBold
-modeBtn.TextSize = 12
-modeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-modeBtn.BackgroundColor3 = (CFG.Mode == "ai") and ONC or OFFC
-modeBtn.AutoButtonColor = false
-modeBtn.Parent = panel
-local mCorner = Instance.new("UICorner") mCorner.CornerRadius = UDim.new(0, 10) mCorner.Parent = modeBtn
-
--- Custom OpenAI gateway (base URL) + model — OpenAI completions, your endpoint
-local baseLabel = Instance.new("TextLabel")
-baseLabel.Size = UDim2.new(1, -24, 0, 16)
-baseLabel.Position = UDim2.new(0, 12, 0, 118)
-baseLabel.BackgroundTransparency = 1
-baseLabel.Text = "API GATEWAY (OpenAI completions base URL)"
-baseLabel.Font = Enum.Font.GothamBold
-baseLabel.TextSize = 11
-baseLabel.TextXAlignment = Enum.TextXAlignment.Left
-baseLabel.TextColor3 = DIM
-baseLabel.Parent = panel
-
-local baseBox = Instance.new("TextBox")
-baseBox.Size = UDim2.new(1, -24, 0, 32)
-baseBox.Position = UDim2.new(0, 12, 0, 136)
-baseBox.BackgroundColor3 = SURF
-baseBox.PlaceholderText = "https://api.openai.com/v1"
-baseBox.PlaceholderColor3 = DIM
-baseBox.Text = tostring(CFG.AIBase or "")
-baseBox.Font = Enum.Font.Gotham
-baseBox.TextSize = 12
-baseBox.TextColor3 = TXT
-baseBox.ClearTextOnFocus = false
-baseBox.Parent = panel
-local bCorner = Instance.new("UICorner") bCorner.CornerRadius = UDim.new(0, 10) bCorner.Parent = baseBox
-local bStroke = Instance.new("UIStroke") bStroke.Color = BORDER bStroke.Parent = baseBox
-
-local modelLabel = Instance.new("TextLabel")
-modelLabel.Size = UDim2.new(1, -24, 0, 16)
-modelLabel.Position = UDim2.new(0, 12, 0, 174)
-modelLabel.BackgroundTransparency = 1
-modelLabel.Text = "MODEL"
-modelLabel.Font = Enum.Font.GothamBold
-modelLabel.TextSize = 11
-modelLabel.TextXAlignment = Enum.TextXAlignment.Left
-modelLabel.TextColor3 = DIM
-modelLabel.Parent = panel
-
-local modelBox = Instance.new("TextBox")
-modelBox.Size = UDim2.new(1, -80, 0, 32)
-modelBox.Position = UDim2.new(0, 12, 0, 192)
-modelBox.BackgroundColor3 = SURF
-modelBox.PlaceholderText = "e.g. gpt-4o-mini"
-modelBox.PlaceholderColor3 = DIM
-modelBox.Text = tostring(CFG.AIModel or "")
-modelBox.Font = Enum.Font.Gotham
-modelBox.TextSize = 12
-modelBox.TextColor3 = TXT
-modelBox.ClearTextOnFocus = false
-modelBox.Parent = panel
-local moCorner = Instance.new("UICorner") moCorner.CornerRadius = UDim.new(0, 10) moCorner.Parent = modelBox
-local moStroke = Instance.new("UIStroke") moStroke.Color = BORDER moStroke.Parent = modelBox
-
-local scanBtn = Instance.new("TextButton")
-scanBtn.Name = "ScanModels"
-scanBtn.Size = UDim2.new(0, 56, 0, 32)
-scanBtn.Position = UDim2.new(1, -64, 0, 192)
-scanBtn.BackgroundColor3 = SURF
-scanBtn.Text = "SCAN"
-scanBtn.Font = Enum.Font.GothamBold
-scanBtn.TextSize = 11
-scanBtn.TextColor3 = TXT
-scanBtn.AutoButtonColor = false
-scanBtn.Parent = panel
-local scCorner = Instance.new("UICorner") scCorner.CornerRadius = UDim.new(0, 10) scCorner.Parent = scanBtn
-local scStroke = Instance.new("UIStroke") scStroke.Color = BORDER scStroke.Parent = scanBtn
-
-local togLabel = Instance.new("TextLabel")
-togLabel.Size = UDim2.new(1, -24, 0, 16)
-togLabel.Position = UDim2.new(0, 12, 0, 230)
-togLabel.BackgroundTransparency = 1
-togLabel.Text = "TOGGLES"
-togLabel.Font = Enum.Font.GothamBold
-togLabel.TextSize = 11
-togLabel.TextXAlignment = Enum.TextXAlignment.Left
-togLabel.TextColor3 = DIM
-togLabel.Parent = panel
-
-local list = Instance.new("ScrollingFrame")
-list.Size = UDim2.new(1, -24, 0, 90)
-list.Position = UDim2.new(0, 12, 0, 248)
-list.BackgroundTransparency = 1
-list.ScrollBarThickness = 4
-list.ScrollBarImageColor3 = BORDER
-list.CanvasSize = UDim2.new(0, 0, 0, 0)
-list.AutomaticCanvasSize = Enum.AutomaticSize.Y
-list.Parent = panel
-local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 8)
-layout.Parent = list
-
-local chatLabel = Instance.new("TextLabel")
-chatLabel.Size = UDim2.new(0.5, -12, 0, 16)
-chatLabel.Position = UDim2.new(0, 12, 0, 346)
-chatLabel.BackgroundTransparency = 1
-chatLabel.Text = "CHAT"
-chatLabel.Font = Enum.Font.GothamBold
-chatLabel.TextSize = 11
-chatLabel.TextXAlignment = Enum.TextXAlignment.Left
-chatLabel.TextColor3 = DIM
-chatLabel.Parent = panel
-
--- CHAT / CONSOLE tab switch (console shows the FULL error text)
-local consoleBtn = Instance.new("TextButton")
-consoleBtn.Name = "ConsoleTab"
-consoleBtn.Size = UDim2.new(0, 90, 0, 20)
-consoleBtn.Position = UDim2.new(1, -102, 0, 344)
-consoleBtn.BackgroundColor3 = SURF
-consoleBtn.Text = "CONSOLE"
-consoleBtn.Font = Enum.Font.GothamBold
-consoleBtn.TextSize = 10
-consoleBtn.TextColor3 = DIM
-consoleBtn.AutoButtonColor = false
-consoleBtn.Parent = panel
-local ctCorner = Instance.new("UICorner") ctCorner.CornerRadius = UDim.new(1, 0) ctCorner.Parent = consoleBtn
-
-local consoleLog = Instance.new("ScrollingFrame")
-consoleLog.Name = "ConsoleLog"
-consoleLog.Size = UDim2.new(1, -24, 0, 160)
-consoleLog.Position = UDim2.new(0, 12, 0, 364)
-consoleLog.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
-consoleLog.BorderSizePixel = 0
-consoleLog.ScrollBarThickness = 4
-consoleLog.ScrollBarImageColor3 = BORDER
-consoleLog.CanvasSize = UDim2.new(0, 0, 0, 0)
-consoleLog.AutomaticCanvasSize = Enum.AutomaticSize.Y
-consoleLog.Visible = false
-consoleLog.Parent = panel
-local conCorner = Instance.new("UICorner") conCorner.CornerRadius = UDim.new(0, 10) conCorner.Parent = consoleLog
-local conPad = Instance.new("UIPadding")
-conPad.PaddingTop = UDim.new(0, 8) conPad.PaddingBottom = UDim.new(0, 8)
-conPad.PaddingLeft = UDim.new(0, 10) conPad.PaddingRight = UDim.new(0, 10)
-conPad.Parent = consoleLog
-local conLayout = Instance.new("UIListLayout")
-conLayout.Padding = UDim.new(0, 4)
-conLayout.SortOrder = Enum.SortOrder.LayoutOrder
-conLayout.Parent = consoleLog
-local consoleOrder = 0
-local showingConsole = false
-local function addConsoleLine(line)
-	consoleOrder += 1
-	pcall(function()
-		local lbl = Instance.new("TextLabel")
-		lbl.LayoutOrder = consoleOrder
-		lbl.Size = UDim2.new(1, -4, 0, 0)
-		lbl.AutomaticSize = Enum.AutomaticSize.Y
-		lbl.BackgroundTransparency = 1
-		lbl.TextXAlignment = Enum.TextXAlignment.Left
-		lbl.TextYAlignment = Enum.TextYAlignment.Top
-		lbl.TextWrapped = true
-		lbl.Font = Enum.Font.Code
-		lbl.TextSize = 11
-		lbl.TextColor3 = Color3.fromRGB(255, 120, 120)
-		lbl.Text = tostring(line):sub(1, 2000)
-		lbl.Parent = consoleLog
-		task.delay(0.05, function()
-			pcall(function()
-				consoleLog.CanvasPosition = Vector2.new(0, math.max(0, consoleLog.AbsoluteCanvasSize.Y - consoleLog.AbsoluteWindowSize.Y))
-			end)
-		end)
-	end)
-end
--- flush lines logged before GUI existed, then go live
-for _, line in ipairs(ConsoleLines) do addConsoleLine(line) end
-ConsoleSink = addConsoleLine
-local function setTab(console)
-	showingConsole = console
-	consoleLog.Visible = console
-	chatLog.Visible = not console
-	consoleBtn.TextColor3 = console and Color3.fromRGB(255,255,255) or DIM
-	consoleBtn.BackgroundColor3 = console and ACCENT or SURF
-end
-consoleBtn.MouseButton1Click:Connect(function() setTab(not showingConsole) end)
-
-local chatLog = Instance.new("ScrollingFrame")
-chatLog.Size = UDim2.new(1, -24, 0, 160)
-chatLog.Position = UDim2.new(0, 12, 0, 364)
-chatLog.BackgroundColor3 = SURF
-chatLog.BorderSizePixel = 0
-chatLog.ScrollBarThickness = 4
-chatLog.ScrollBarImageColor3 = BORDER
-chatLog.CanvasSize = UDim2.new(0, 0, 0, 0)
-chatLog.AutomaticCanvasSize = Enum.AutomaticSize.Y
-chatLog.Parent = panel
-local chatCorner = Instance.new("UICorner") chatCorner.CornerRadius = UDim.new(0, 10) chatCorner.Parent = chatLog
-local chatLayout = Instance.new("UIListLayout")
-chatLayout.Padding = UDim.new(0, 6)
-chatLayout.SortOrder = Enum.SortOrder.LayoutOrder
-chatLayout.Parent = chatLog
-
--- Model picker dropdown (overlay over chat, filled by SCAN from <gateway>/models)
-local modelList = Instance.new("ScrollingFrame")
-modelList.Name = "ModelList"
-modelList.Size = UDim2.new(1, -24, 0, 160)
-modelList.Position = UDim2.new(0, 12, 0, 364)
-modelList.BackgroundColor3 = BG
-modelList.BorderSizePixel = 0
-modelList.ScrollBarThickness = 4
-modelList.ScrollBarImageColor3 = BORDER
-modelList.CanvasSize = UDim2.new(0, 0, 0, 0)
-modelList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-modelList.Visible = false
-modelList.ZIndex = 30
-modelList.Parent = panel
-local mlCorner = Instance.new("UICorner") mlCorner.CornerRadius = UDim.new(0, 12) mlCorner.Parent = modelList
-local mlStroke = Instance.new("UIStroke") mlStroke.Color = ACCENT mlStroke.Thickness = 1 mlStroke.Parent = modelList
-local mlLayout = Instance.new("UIListLayout")
-mlLayout.Padding = UDim.new(0, 6)
-mlLayout.SortOrder = Enum.SortOrder.LayoutOrder
-mlLayout.Parent = modelList
-local mlPad = Instance.new("UIPadding")
-mlPad.PaddingTop = UDim.new(0, 8) mlPad.PaddingBottom = UDim.new(0, 8)
-mlPad.PaddingLeft = UDim.new(0, 8) mlPad.PaddingRight = UDim.new(0, 8)
-mlPad.Parent = modelList
-
-local input = Instance.new("TextBox")
-input.Size = UDim2.new(1, -68, 0, 38)
-input.Position = UDim2.new(0, 12, 1, -48)
-input.BackgroundColor3 = SURF
-input.PlaceholderText = "talk here — run print('hi')…"
-input.PlaceholderColor3 = DIM
-input.Text = ""
-input.Font = Enum.Font.Gotham
-input.TextSize = 13
-input.TextColor3 = TXT
-input.ClearTextOnFocus = false
-input.Parent = panel
-local iCorner = Instance.new("UICorner") iCorner.CornerRadius = UDim.new(1, 0) iCorner.Parent = input
-local iStroke = Instance.new("UIStroke") iStroke.Color = BORDER iStroke.Parent = input
-
-local sendBtn = Instance.new("TextButton")
-sendBtn.Name = "Send"
-sendBtn.Size = UDim2.new(0, 38, 0, 38)
-sendBtn.Position = UDim2.new(1, -50, 1, -48)
-sendBtn.BackgroundColor3 = ACCENT
-sendBtn.Text = "»"
-sendBtn.Font = Enum.Font.GothamBold
-sendBtn.TextSize = 20
-sendBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-sendBtn.AutoButtonColor = false
-sendBtn.Parent = panel
-local sendCorner = Instance.new("UICorner") sendCorner.CornerRadius = UDim.new(1, 0) sendCorner.Parent = sendBtn
-
-local chatOrder = 0
-local function scrollDown()
-	task.delay(0.05, function()
-		pcall(function()
-			chatLog.CanvasPosition = Vector2.new(0, math.max(0, chatLog.AbsoluteCanvasSize.Y - chatLog.AbsoluteWindowSize.Y))
-		end)
-	end)
-end
-local function maxBubbleW()
-	local w = 230
-	pcall(function()
-		local aw = chatLog.AbsoluteWindowSize.X
-		if aw and aw > 100 then w = aw - 70 end
-	end)
-	return math.max(120, w)
-end
--- Modern chat bubble. Returns holder + body label (for the typing dots).
-local function makeBubble(mine, nameText, bodyText, animate)
-	chatOrder = chatOrder + 1
-	local holder = Instance.new("Frame")
-	holder.Name = "M"
-	holder.LayoutOrder = chatOrder
-	holder.Size = UDim2.new(1, 0, 0, 0)
-	holder.AutomaticSize = Enum.AutomaticSize.Y
-	holder.BackgroundTransparency = 1
-	holder.Parent = chatLog
-	local bubble = Instance.new("Frame")
-	bubble.AnchorPoint = mine and Vector2.new(1, 0) or Vector2.new(0, 0)
-	bubble.Position = mine and UDim2.new(1, -6, 0, 8) or UDim2.new(0, 6, 0, 8)
-	bubble.Size = UDim2.new(0, 0, 0, 0)
-	bubble.AutomaticSize = Enum.AutomaticSize.XY
-	bubble.BackgroundColor3 = mine and ACCENT or BUBBLE
-	bubble.BackgroundTransparency = animate and 1 or 0
-	bubble.BorderSizePixel = 0
-	bubble.Parent = holder
-	local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(0, 14) bc.Parent = bubble
-	local cap = Instance.new("UISizeConstraint") cap.MaxSize = Vector2.new(maxBubbleW(), 100000) cap.Parent = bubble
-	local pad = Instance.new("UIPadding")
-	pad.PaddingLeft = UDim.new(0, 10) pad.PaddingRight = UDim.new(0, 10)
-	pad.PaddingTop = UDim.new(0, 8) pad.PaddingBottom = UDim.new(0, 8)
-	pad.Parent = bubble
-	local bl = Instance.new("UIListLayout")
-	bl.Padding = UDim.new(0, 2)
-	bl.SortOrder = Enum.SortOrder.LayoutOrder
-	bl.Parent = bubble
-	local nameLbl = nil
-	if nameText and nameText ~= "" then
-		nameLbl = Instance.new("TextLabel")
-		nameLbl.LayoutOrder = 1
-		nameLbl.Size = UDim2.new(1, 0, 0, 12)
-		nameLbl.AutomaticSize = Enum.AutomaticSize.Y
-		nameLbl.BackgroundTransparency = 1
-		nameLbl.Font = Enum.Font.GothamBold
-		nameLbl.TextSize = 10
-		nameLbl.TextColor3 = DIM
-		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-		nameLbl.Text = nameText
-		nameLbl.TextTransparency = animate and 1 or 0
-		nameLbl.Parent = bubble
-	end
-	local msg = Instance.new("TextLabel")
-	msg.LayoutOrder = 2
-	msg.Size = UDim2.new(1, 0, 0, 0)
-	msg.AutomaticSize = Enum.AutomaticSize.Y
-	msg.BackgroundTransparency = 1
-	msg.Font = Enum.Font.Gotham
-	msg.TextSize = 13
-	msg.TextColor3 = mine and Color3.fromRGB(255, 255, 255) or TXT
-	msg.TextXAlignment = Enum.TextXAlignment.Left
-	msg.TextYAlignment = Enum.TextYAlignment.Top
-	msg.TextWrapped = true
-	msg.Text = tostring(bodyText or ""):sub(1, 800)
-	msg.TextTransparency = animate and 1 or 0
-	msg.Parent = bubble
-	if animate then
-		local target = mine and UDim2.new(1, -6, 0, 0) or UDim2.new(0, 6, 0, 0)
-		tween(bubble, { BackgroundTransparency = 0, Position = target }, 0.22)
-		tween(msg, { TextTransparency = 0 }, 0.22)
-		if nameLbl then tween(nameLbl, { TextTransparency = 0 }, 0.22) end
-	end
-	scrollDown()
-	return holder, msg
-end
-local streamBubble = nil -- forward: bots-style streaming reveal, defined below
+-- Chat history (paragraph per message, newest at bottom)
 local function addChat(who, text)
 	text = tostring(text or "")
 	if text == "" then return end
-	if who == "You" then
-		makeBubble(true, "", text, true)
-	else
-		streamBubble(false, "HEKZ", text)
-	end
-end
--- Bots-style streaming: reveal the reply token-by-token in its bubble
-streamBubble = function(mine, nameText, fullText)
-	fullText = tostring(fullText or ""):sub(1, 800)
-	local holder, msg = makeBubble(mine, nameText, "", false)
-	local n = #fullText
-	if n == 0 then return end
-	local step = math.max(2, math.floor(n / 80)) -- ~80 ticks whatever the length
-	local i, tick = 0, 0
-	while i < n do
-		if not holder.Parent then return end
-		i = math.min(n, i + step)
-		tick = tick + 1
-		pcall(function()
-			if msg.Parent then msg.Text = fullText:sub(1, i) end
-		end)
-		if tick % 4 == 0 then scrollDown() end
-		task.wait(0.015)
-	end
 	pcall(function()
-		if msg.Parent then msg.Text = fullText end
-	end)
-	scrollDown()
-end
--- Typing indicator bubble ("..." pulsing) while the brain works
-local typingHolder, typingDots, typingStop = nil, nil, false
-local function hideTyping()
-	typingStop = true
-	if typingHolder then pcall(function() typingHolder:Destroy() end) end
-	typingHolder, typingDots = nil, nil
-end
-local function showTyping()
-	hideTyping()
-	typingStop = false
-	typingHolder, typingDots = makeBubble(false, "HEKZ", ".  ", false)
-	task.spawn(function()
-		local frames = { ".  ", ".. ", "..." }
-		local i = 0
-		while not typingStop and typingHolder and typingHolder.Parent do
-			i = i % 3 + 1
-			pcall(function() typingDots.Text = frames[i] end)
-			task.wait(0.35)
-		end
+		ChatTab:CreateParagraph({ Title = tostring(who), Text = text:sub(1, 800) })
 	end)
 end
 
--- Key box + mode switch wiring (key stays on your client only)
+-- Console: EVERY full error/response lands here (never truncated in-panel)
+local function addConsoleLine(line)
+	pcall(function()
+		ConsoleTab:CreateParagraph({ Title = "log", Text = tostring(line):sub(1, 2000) })
+	end)
+end
+for _, line in ipairs(ConsoleLines) do addConsoleLine(line) end
+ConsoleSink = addConsoleLine
+local function showConsole()
+	pcall(function() ConsoleTab:Activate() end)
+end
+
+-- Setup tab: key / gateway / model / mode / scan
 local function maskKey(k)
 	k = tostring(k or "")
 	if #k <= 8 then return "key set" end
 	return "key set (…" .. k:sub(-4) .. ") — paste new to replace"
 end
-local function refreshSub()
-	sub.Text = "executor (" .. EXEC_NAME .. ") · " .. ((CFG.AIKey ~= "" and CFG.Mode == "ai") and "AI ON" or "offline")
-	statusDot.BackgroundColor3 = ((CFG.AIKey ~= "" and CFG.Mode == "ai") and ONC or DIM)
-end
-if CFG.AIKey ~= "" then
-	keyBox.PlaceholderText = maskKey(CFG.AIKey)
-	refreshSub()
-end
-saveBtn.MouseButton1Click:Connect(function()
-	local k = keyBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
-	local b = baseBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
-	local m = modelBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
-	if k ~= "" then
-		CFG.AIKey = k
-		keyBox.Text = ""
-		keyBox.PlaceholderText = maskKey(k)
-	end
-	if b ~= "" then
-		CFG.AIBase = b
-		baseBox.Text = b
-	end
-	if m ~= "" then
-		CFG.AIModel = m
-		modelBox.Text = m
-	end
+local function syncGetgenv()
 	pcall(function()
-		local gg = getgenv and getgenv() or _G
-		if k ~= "" then gg.HEKZ_AIKEY = CFG.AIKey end
+		local gg = (getgenv and getgenv()) or _G
+		gg.HEKZ_AIKEY = CFG.AIKey
 		gg.HEKZ_AIBASE = CFG.AIBase
 		gg.HEKZ_MODEL = CFG.AIModel
 		if gg.HEKZ then gg.HEKZ.AIBase, gg.HEKZ.AIModel, gg.HEKZ.AIKey = CFG.AIBase, CFG.AIModel, CFG.AIKey end
 	end)
-	refreshSub()
-	addChat("Hekz", "Saved. Gateway: " .. tostring(CFG.AIBase) .. " | model: " .. tostring(CFG.AIModel) .. ((k ~= "") and (" | key …" .. k:sub(-4)) or ""))
-end)
-modeBtn.MouseButton1Click:Connect(function()
-	CFG.Mode = (CFG.Mode == "ai") and "local" or "ai"
-	modeBtn.Text = (CFG.Mode == "ai") and "AI" or "LOCAL"
-	tween(modeBtn, { BackgroundColor3 = (CFG.Mode == "ai") and ONC or OFFC }, 0.18)
-	refreshSub()
-	addChat("Hekz", "Mode: " .. CFG.Mode .. ((CFG.Mode == "ai" and CFG.AIKey == "") and " (no key yet — paste it above)" or ""))
-end)
+end
 
--- SCAN: list models from <gateway>/models (OpenAI style), tap to select
-local scanning = false
-local function pickModel(id)
+SetupTab:CreateParagraph({
+	Title = "Status",
+	Text = "executor (" .. EXEC_NAME .. ") · " .. ((CFG.AIKey ~= "" and CFG.Mode == "ai") and "AI ON" or "offline — paste key below"),
+})
+SetupTab:CreateInput({
+	Name = "AI KEY (stays on your client)",
+	PlaceholderText = (CFG.AIKey ~= "" and maskKey(CFG.AIKey) or "paste key here…"),
+	RemoveTextAfterFocusLost = true,
+	Callback = function(text)
+		local k = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		if k ~= "" then
+			CFG.AIKey = k
+			syncGetgenv()
+			addChat("Hekz", "Key saved (…" .. k:sub(-4) .. ").")
+			clog("setup", "AI key updated (… " .. k:sub(-4) .. ")")
+		end
+	end,
+})
+SetupTab:CreateInput({
+	Name = "API GATEWAY (OpenAI completions base URL)",
+	CurrentValue = tostring(CFG.AIBase or ""),
+	PlaceholderText = "https://api.openai.com/v1",
+	RemoveTextAfterFocusLost = false,
+	Callback = function(text)
+		local b = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		if b ~= "" then
+			CFG.AIBase = b
+			syncGetgenv()
+			clog("setup", "gateway -> " .. b)
+		end
+	end,
+})
+local modelDropdown = nil
+local function setModel(id)
 	CFG.AIModel = id
-	modelBox.Text = id
-	pcall(function()
-		local gg = getgenv and getgenv() or _G
-		gg.HEKZ_MODEL = id
-		if gg.HEKZ then gg.HEKZ.AIModel = id end
-	end)
-	modelList.Visible = false
+	syncGetgenv()
 	addChat("Hekz", "Model: " .. id)
+	clog("setup", "model -> " .. id)
 end
-scanBtn.MouseButton1Click:Connect(function()
-	if scanning then return end
-	local b = baseBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
-	if b == "" then b = tostring(CFG.AIBase or "") end
-	if b == "" then
-		addChat("Hekz", "Set the API GATEWAY first, then SCAN.")
-		return
-	end
-	if modelList.Visible then
-		modelList.Visible = false
-		return
-	end
-	local k = keyBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
-	if k == "" then k = tostring(CFG.AIKey or "") end
-	scanning = true
-	scanBtn.Text = "..."
-	task.spawn(function()
-		local murl = modelsURL(b)
-		local status, data = httpGETAuth(murl, k)
-		data = tostring(data or "")
-		scanning = false
-		pcall(function() scanBtn.Text = "SCAN" end)
-		if status == 0 then
-			clog("scan", "GET " .. murl .. " blocked: " .. data:sub(1, 2000))
-			addChat("Hekz", "SCAN: request blocked (" .. data:sub(1, 200) .. "). Full error in CONSOLE tab.")
-			setTab(true)
-			return
-		end
-		if status ~= 200 then
-			local why = ""
-			pcall(function()
-				local e = HttpService:JSONDecode(data)
-				if type(e) == "table" and type(e.error) == "table" and e.error.message then
-					why = " — " .. tostring(e.error.message):sub(1, 200)
-				elseif type(e) == "table" and e.message then
-					why = " — " .. tostring(e.message):sub(1, 200)
-				end
-			end)
-			if why == "" then why = " — " .. data:sub(1, 200) end
-			clog("scan", "GET " .. murl .. " -> HTTP " .. status .. " body: " .. data:sub(1, 2000))
-			addChat("Hekz", "SCAN: HTTP " .. status .. why .. " (full in CONSOLE)")
-			setTab(true)
-			return
-		end
-		local dec = nil
-		pcall(function() dec = HttpService:JSONDecode(data) end)
-		local ids = {}
-		local function grab(arr)
-			if type(arr) ~= "table" then return end
-			for _, it in ipairs(arr) do
-				if type(it) == "string" then
-					table.insert(ids, it)
-				elseif type(it) == "table" and type(it.id) == "string" then
-					table.insert(ids, it.id)
-				end
-				if #ids >= 50 then break end
+SetupTab:CreateInput({
+	Name = "MODEL (or SCAN below, then pick)",
+	CurrentValue = tostring(CFG.AIModel or ""),
+	PlaceholderText = "e.g. gpt-4o-mini",
+	RemoveTextAfterFocusLost = false,
+	Callback = function(text)
+		local m = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		if m ~= "" then setModel(m) end
+	end,
+})
+SetupTab:CreateToggle({
+	Name = "AI mode (off = local)",
+	CurrentValue = (CFG.Mode == "ai"),
+	Callback = function(v)
+		CFG.Mode = v and "ai" or "local"
+		addChat("Hekz", "Mode: " .. CFG.Mode)
+		clog("setup", "mode -> " .. CFG.Mode)
+	end,
+})
+local scanning = false
+SetupTab:CreateButton({
+	Name = "SCAN models from gateway",
+	Callback = function()
+		if scanning then return end
+		scanning = true
+		task.spawn(function()
+			local murl = modelsURL(tostring(CFG.AIBase or ""))
+			local status, data = httpGETAuth(murl, tostring(CFG.AIKey or ""))
+			data = tostring(data or "")
+			scanning = false
+			if status == 0 then
+				clog("scan", "GET " .. murl .. " blocked: " .. data:sub(1, 2000))
+				addChat("Hekz", "SCAN blocked — full error in CONSOLE tab.")
+				showConsole()
+				return
 			end
-		end
-		if type(dec) == "table" then
-			grab(dec.data)
-			if #ids == 0 then grab(dec.models) end
-			if #ids == 0 and #dec > 0 then grab(dec) end
-		end
-		if #ids == 0 then
-			addChat("Hekz", "SCAN: HTTP 200 but no model list in reply (" .. data:sub(1, 150) .. "). Type the id into MODEL by hand.")
-			return
-		end
-		for _, ch in ipairs(modelList:GetChildren()) do
-			if ch:IsA("TextButton") then pcall(function() ch:Destroy() end) end
-		end
-		for i, id in ipairs(ids) do
-			local btn = Instance.new("TextButton")
-			btn.LayoutOrder = i
-			btn.Size = UDim2.new(1, -4, 0, 30)
-			btn.AutomaticSize = Enum.AutomaticSize.Y
-			btn.BackgroundColor3 = (id == CFG.AIModel) and ACCENT or SURF
-			btn.Text = "  " .. id
-			btn.Font = Enum.Font.Gotham
-			btn.TextSize = 12
-			btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-			btn.TextXAlignment = Enum.TextXAlignment.Left
-			btn.TextWrapped = true
-			btn.AutoButtonColor = false
-			btn.Parent = modelList
-			local cc = Instance.new("UICorner") cc.CornerRadius = UDim.new(0, 8) cc.Parent = btn
-			btn.MouseButton1Click:Connect(function() pickModel(id) end)
-		end
-		modelList.Visible = true
-		modelList.CanvasPosition = Vector2.new(0, 0)
-		addChat("Hekz", "SCAN: " .. #ids .. " models — tap one. (SCAN again to hide.)")
-	end)
-end)
+			if status ~= 200 then
+				clog("scan", "GET " .. murl .. " -> HTTP " .. status .. " body: " .. data:sub(1, 2000))
+				addChat("Hekz", "SCAN: HTTP " .. status .. " — full body in CONSOLE tab.")
+				showConsole()
+				return
+			end
+			local dec = nil
+			pcall(function() dec = HttpService:JSONDecode(data) end)
+			local ids = {}
+			local function grab(arr)
+				if type(arr) ~= "table" then return end
+				for _, it in ipairs(arr) do
+					if type(it) == "string" then table.insert(ids, it)
+					elseif type(it) == "table" and type(it.id) == "string" then table.insert(ids, it.id) end
+					if #ids >= 50 then break end
+				end
+			end
+			if type(dec) == "table" then
+				grab(dec.data)
+				if #ids == 0 then grab(dec.models) end
+				if #ids == 0 and #dec > 0 then grab(dec) end
+			end
+			if #ids == 0 then
+				clog("scan", "HTTP 200 but no model list: " .. data:sub(1, 2000))
+				addChat("Hekz", "SCAN: no model list in reply — see CONSOLE, or type id by hand.")
+				showConsole()
+				return
+			end
+			pcall(function() if modelDropdown then modelDropdown:Destroy() end end)
+			modelDropdown = SetupTab:CreateDropdown({
+				Name = "Pick model (" .. #ids .. " found)",
+				Options = ids,
+				CurrentOption = { tostring(CFG.AIModel or ids[1]) },
+				MultipleOptions = false,
+				Callback = function(opt)
+					if type(opt) == "table" then opt = opt[1] end
+					if opt and opt ~= "" then setModel(tostring(opt)) end
+				end,
+			})
+			addChat("Hekz", "SCAN: " .. #ids .. " models — pick from the dropdown.")
+			clog("scan", "found " .. #ids .. " models: " .. table.concat(ids, ", "):sub(1, 1000))
+		end)
+	end,
+})
 
--- Toggles (local only, no server to sync to)
-local toolNames = {}
-for n in pairs(CFG.Tools) do table.insert(toolNames, n) end
-table.sort(toolNames)
-for _, key in ipairs(toolNames) do
-	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, 0, 0, 32)
-	row.BackgroundColor3 = SURF
-	row.BorderSizePixel = 0
-	row.Parent = list
-	local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 12) c.Parent = row
-	local lbl = Instance.new("TextLabel")
-	lbl.Size = UDim2.new(1, -84, 1, 0)
-	lbl.Position = UDim2.new(0, 10, 0, 0)
-	lbl.BackgroundTransparency = 1
-	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.Font = Enum.Font.Gotham
-	lbl.TextSize = 13
-	lbl.TextColor3 = TXT
-	lbl.Text = key .. " [" .. tostring(CFG.Tools[key]) .. "]"
-	lbl.Parent = row
-	local pill = Instance.new("TextButton")
-	pill.Size = UDim2.new(0, 58, 0, 26)
-	pill.Position = UDim2.new(1, -68, 0.5, -13)
-	pill.Text = CFG.Tools[key] and "ON" or "OFF"
-	pill.Font = Enum.Font.GothamBold
-	pill.TextSize = 12
-	pill.TextColor3 = Color3.fromRGB(255, 255, 255)
-	pill.BackgroundColor3 = CFG.Tools[key] and ONC or OFFC
-	pill.AutoButtonColor = false
-	pill.Parent = row
-	local pc = Instance.new("UICorner") pc.CornerRadius = UDim.new(1, 0) pc.Parent = pill
-	pill.MouseButton1Click:Connect(function()
-		CFG.Tools[key] = not CFG.Tools[key]
-		pill.Text = CFG.Tools[key] and "ON" or "OFF"
-		tween(pill, { BackgroundColor3 = CFG.Tools[key] and ONC or OFFC }, 0.18)
-		lbl.Text = key .. " [" .. tostring(CFG.Tools[key]) .. "]"
-	end)
-end
-
-local open = false
-local function setOpen(v)
-	open = v
-	if v then
-		panel.Visible = true
-		panel.BackgroundTransparency = 1
-		panel.Position = UDim2.new(anchor.X.Scale, anchor.X.Offset, anchor.Y.Scale, anchor.Y.Offset + 24)
-		tween(panel, { BackgroundTransparency = 0 }, 0.22)
-		tween(panel, { Position = anchor }, 0.34, Enum.EasingStyle.Back)
-		tween(fab, { Rotation = 45 }, 0.28)
-	else
-		tween(panel, {
-			BackgroundTransparency = 1,
-			Position = UDim2.new(anchor.X.Scale, anchor.X.Offset, anchor.Y.Scale, anchor.Y.Offset + 20),
-		}, 0.2)
-		tween(fab, { Rotation = 0 }, 0.28)
-		task.delay(0.22, function() if not open then panel.Visible = false end end)
+-- Tools tab: one toggle per tool (local only)
+do
+	local toolNames = {}
+	for n in pairs(CFG.Tools) do table.insert(toolNames, n) end
+	table.sort(toolNames)
+	for _, key in ipairs(toolNames) do
+		ToolsTab:CreateToggle({
+			Name = key,
+			CurrentValue = CFG.Tools[key] == true,
+			Callback = function(v)
+				CFG.Tools[key] = (v == true)
+				clog("tools", key .. " -> " .. tostring(CFG.Tools[key]))
+			end,
+		})
 	end
 end
-fab.MouseButton1Click:Connect(function() fabPop() setOpen(not open) end)
-closeBtn.MouseButton1Click:Connect(function() setOpen(false) end)
 
+-- Chat input + send
 local busy = false
-local function sendMsg()
-	if busy or #input.Text == 0 then return end
-	local msg = input.Text
-	input.Text = ""
-	input.PlaceholderText = "thinking…"
-	addChat("You", msg)
-	pushHist("user", msg)
+local function sendMsg(text)
+	if busy then return end
+	text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if text == "" then return end
+	addChat("You", text)
+	pushHist("user", text)
 	busy = true
-	showTyping()
 	task.spawn(function()
-		local reply
-		-- agent-first: the model thinks via askAI; without a key there is no brain
-		local ok, res = pcall(askAI, msg)
-		reply = ok and res or ("BRAIN ERROR: " .. tostring(res):sub(1, 300))
+		local ok, res = pcall(askAI, text)
+		local reply = ok and res or ("BRAIN ERROR: " .. tostring(res):sub(1, 300))
 		if not ok then clog("brain", tostring(res):sub(1, 2000)) end
-		hideTyping()
 		pushHist("assistant", reply)
 		addChat("Hekz", reply)
-		input.PlaceholderText = tostring(reply):sub(1, 60)
-		-- any failure text points at CONSOLE and auto-opens it so you see the real error
 		local low = tostring(reply):lower()
-		if low:find("error", 1, true) or low:find("blocked", 1, true) or low:find("non-json", 1, true) or low:find("empty reply", 1, true) then
-			setTab(true)
+		if low:find("error", 1, true) or low:find("blocked", 1, true)
+			or low:find("non-json", 1, true) or low:find("empty reply", 1, true) then
+			showConsole()
+			pcall(function()
+				Luna:Notification({ Title = "Hekz error", Content = tostring(reply):sub(1, 120), Icon = "warning", ImageSource = "Material" })
+			end)
 		end
 		busy = false
 	end)
 end
-input.FocusLost:Connect(function(enter)
-	if enter then sendMsg() end
-end)
-sendBtn.MouseButton1Click:Connect(function()
-	tween(sendBtn, { Size = UDim2.new(0, 32, 0, 32) }, 0.07)
-	task.delay(0.07, function()
-		tween(sendBtn, { Size = UDim2.new(0, 38, 0, 38) }, 0.14, Enum.EasingStyle.Back)
-	end)
-	sendMsg()
-end)
+ChatTab:CreateInput({
+	Name = "Message Hekz (Enter to send)",
+	PlaceholderText = "talk here — run print('hi')…",
+	RemoveTextAfterFocusLost = true,
+	Enter = true,
+	Callback = function(text) sendMsg(text) end,
+})
 
-addChat("Hekz", "Loaded on " .. EXEC_NAME .. " (" .. ((CFG.AIKey ~= "" and CFG.Mode == "ai") and "AI ON" or "offline — paste key in AI KEY box") .. "). Powers: time | calc | scan | parts near | find | info | tree | spawn | teleport | read | exec Luau. Just talk here.")
-setOpen(true)
-print("[Hekz] executor build online (" .. EXEC_NAME .. ")")
+-- Theme / config sections (Luna built-ins)
+pcall(function() ToolsTab:BuildThemeSection() end)
+
+addChat("Hekz", "Loaded on " .. EXEC_NAME .. " (" .. ((CFG.AIKey ~= "" and CFG.Mode == "ai") and "AI ON" or "offline — paste key in Setup tab") .. "). Powers: time | calc | scan | parts near | find | info | tree | spawn | teleport | read | exec Luau. Just talk in Chat; errors land in Console.")
+clog("gui", "Luna UI online on " .. EXEC_NAME)
+print("[Hekz] executor build online (" .. EXEC_NAME .. ") via Luna")
