@@ -845,10 +845,26 @@ local Window = Luna:CreateWindow({
 	KeySystem = false,
 })
 
-local ChatTab = Window:CreateTab({ Name = "Chat", Icon = "chat", ImageSource = "Material" })
-local ConsoleTab = Window:CreateTab({ Name = "Console", Icon = "terminal", ImageSource = "Material" })
-local SetupTab = Window:CreateTab({ Name = "Setup", Icon = "settings", ImageSource = "Material" })
-local ToolsTab = Window:CreateTab({ Name = "Tools", Icon = "build", ImageSource = "Material" })
+local function makeTab(name, icon)
+	local ok, tab = pcall(function()
+		return Window:CreateTab({ Name = name, Icon = icon, ImageSource = "Material", ShowTitle = true })
+	end)
+	if ok and tab then return tab end
+	clog("gui", "tab '" .. name .. "' icon failed, retrying plain")
+	return Window:CreateTab({ Name = name, ShowTitle = true })
+end
+local ChatTab = makeTab("Chat", "chat")
+local ConsoleTab = makeTab("Console", "code")
+local SetupTab = makeTab("Setup", "settings")
+local ToolsTab = makeTab("Tools", "build")
+-- Seed every tab immediately so none renders empty, then force Chat front.
+pcall(function()
+	ChatTab:CreateLabel({ Text = "HEKZ CHAT — talk below, replies appear here", Style = 2 })
+	ConsoleTab:CreateLabel({ Text = "CONSOLE — full errors land here", Style = 2 })
+	SetupTab:CreateLabel({ Text = "SETUP — key, gateway, model, scan", Style = 2 })
+	ToolsTab:CreateLabel({ Text = "TOOLS — toggle powers on/off", Style = 2 })
+end)
+pcall(function() ChatTab:Activate() end)
 
 -- Chat history (paragraph per message, newest at bottom)
 local function addChat(who, text)
