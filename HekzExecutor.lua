@@ -43,6 +43,20 @@ pcall(function()
 	end
 end)
 
+-- ============================== CONSOLE (full errors, never truncated) ==============================
+-- Chat bubbles stay short; EVERY full error/response goes here so you always
+-- see WHAT went wrong. clog() is safe to call before the GUI exists (buffers).
+local ConsoleLines = {}
+local ConsoleSink = nil -- set by GUI: function(line)
+local function clog(tag, msg)
+	msg = tostring(msg or "")
+	local line = "[" .. os.date("%H:%M:%S") .. "][" .. tostring(tag or "log") .. "] " .. msg
+	table.insert(ConsoleLines, line)
+	if #ConsoleLines > 200 then table.remove(ConsoleLines, 1) end
+	pcall(function() print("[Hekz][" .. tostring(tag or "log") .. "] " .. msg:sub(1, 1000)) end)
+	if ConsoleSink then pcall(ConsoleSink, line) end
+end
+
 local function httpPOST(url, bodyTable, apiKey)
 	local json = HttpService:JSONEncode(bodyTable)
 	local headers = { ["Content-Type"] = "application/json" }
@@ -54,12 +68,18 @@ local function httpPOST(url, bodyTable, apiKey)
 		if ok and type(res) == "table" then
 			local data = res.Body or res.body or ""
 			if type(data) ~= "string" then data = tostring(data) end
-			return HttpService:JSONDecode(data)
+			local okDec, dec = pcall(function() return HttpService:JSONDecode(data) end)
+			if okDec then return dec end
+			clog("http", "POST " .. url .. " returned non-JSON (" .. #data .. " chars): " .. data:sub(1, 2000))
+			error("non-JSON reply (" .. #data .. " chars): " .. data:sub(1, 300))
 		end
 		-- fall through to HttpService on executor-request failure
 	end
 	local res = HttpService:PostAsync(url, json, Enum.HttpContentType.ApplicationJson, false, headers)
-	return HttpService:JSONDecode(res)
+	local okDec, dec = pcall(function() return HttpService:JSONDecode(res) end)
+	if okDec then return dec end
+	clog("http", "POST " .. url .. " returned non-JSON (" .. #tostring(res) .. " chars): " .. tostring(res):sub(1, 2000))
+	return HttpService:JSONDecode(res) -- re-throw with original message
 end
 
 -- Authed GET that NEVER throws: returns (httpStatus, bodyString).
@@ -724,15 +744,18 @@ local function askAI(text)
 	local rounds = math.max(1, math.min(tonumber(CFG.MaxRounds) or 4, 8))
 	local emptyRetries = 0
 	for _ = 1, rounds do
-		local body = { model = model, messages = messages, temperature = 0.7, max_tokens = 512 }
-		if #toolDefs > 0 then body.tools = toolDefs; body.tool_choice = "auto" end
-		local ok, dec = pcall(httpPOST, url, body, key)
+ 	local body = { model = model, messages = messages, temperature = 0.7, max_tokens = 512 }
+ 		if #toolDefs > 0 then body.tools = toolDefs; body.tool_choice = "auto" end
+  		clog("ai", "--> POST " .. url .. " model=" .. model .. " tools=" .. #toolDefs)
+ 		local ok, dec = pcall(httpPOST, url, body, key)
 		if not ok then
-			return "AI request failed (" .. tostring(dec):sub(1, 150) .. "). Try again in a bit."
+			clog("ai", "POST failed: " .. tostring(dec):sub(1, 2000))
+			return "AI request failed (" .. tostring(dec):sub(1, 150) .. "). Full error in CONSOLE tab."
 		end
 		if type(dec) ~= "table" then
 			local raw = tostring(dec):sub(1, 200)
-			return "AI gave a non-JSON reply (" .. raw .. "). Check the gateway URL, then try again."
+			clog("ai", "non-table reply: " .. tostring(dec):sub(1, 2000))
+			return "AI gave a non-JSON reply (" .. raw .. "). Full body in CONSOLE tab."
 		end
 		-- provider error object? surface its message (bad key / bad model id most common)
 		local provErr = ""
@@ -742,8 +765,9 @@ local function askAI(text)
 			elseif e ~= nil then provErr = tostring(e) end
 		end)
 		if provErr ~= "" then
+			clog("ai", "provider error: " .. provErr:sub(1, 2000))
 			if provErr:lower():find("tool") and #toolDefs > 0 then toolDefs = {} continue end
-			return "AI error: " .. provErr:sub(1, 220)
+			return "AI error: " .. provErr:sub(1, 220) .. " (full in CONSOLE tab)"
 		end
 		local ch = type(dec.choices) == "table" and dec.choices or {}
 		local msg = (ch[1] and ch[1].message) or {}
@@ -770,6 +794,7 @@ local function askAI(text)
 				end
 				if tname ~= "" then
 					local out = toolRun(tname, targs, nil)
+					clog("tool", tname .. " -> " .. out:sub(1, 2000))
 					pushHist("tool", tname .. " -> " .. out:sub(1, 500))
 					table.insert(messages, { role = "tool", tool_call_id = tostring(tc.id or tname), content = out:sub(1, 2000) })
 				end
@@ -778,6 +803,7 @@ local function askAI(text)
 			local tname, targs = parseReplyTool(content)
 			if tname then
 				local out = toolRun(tname, targs or {}, nil)
+				clog("tool", tname .. " -> " .. out:sub(1, 2000))
 				pushHist("tool", tname .. " -> " .. out:sub(1, 500))
 				table.insert(messages, { role = "assistant", content = content })
 				table.insert(messages, { role = "user", content = "TOOL RESULT [" .. tname .. "]: " .. out:sub(1, 2000) })
@@ -1099,7 +1125,7 @@ layout.Padding = UDim.new(0, 8)
 layout.Parent = list
 
 local chatLabel = Instance.new("TextLabel")
-chatLabel.Size = UDim2.new(1, -24, 0, 16)
+chatLabel.Size = UDim2.new(0.5, -12, 0, 16)
 chatLabel.Position = UDim2.new(0, 12, 0, 346)
 chatLabel.BackgroundTransparency = 1
 chatLabel.Text = "CHAT"
@@ -1108,6 +1134,78 @@ chatLabel.TextSize = 11
 chatLabel.TextXAlignment = Enum.TextXAlignment.Left
 chatLabel.TextColor3 = DIM
 chatLabel.Parent = panel
+
+-- CHAT / CONSOLE tab switch (console shows the FULL error text)
+local consoleBtn = Instance.new("TextButton")
+consoleBtn.Name = "ConsoleTab"
+consoleBtn.Size = UDim2.new(0, 90, 0, 20)
+consoleBtn.Position = UDim2.new(1, -102, 0, 344)
+consoleBtn.BackgroundColor3 = SURF
+consoleBtn.Text = "CONSOLE"
+consoleBtn.Font = Enum.Font.GothamBold
+consoleBtn.TextSize = 10
+consoleBtn.TextColor3 = DIM
+consoleBtn.AutoButtonColor = false
+consoleBtn.Parent = panel
+local ctCorner = Instance.new("UICorner") ctCorner.CornerRadius = UDim.new(1, 0) ctCorner.Parent = consoleBtn
+
+local consoleLog = Instance.new("ScrollingFrame")
+consoleLog.Name = "ConsoleLog"
+consoleLog.Size = UDim2.new(1, -24, 0, 160)
+consoleLog.Position = UDim2.new(0, 12, 0, 364)
+consoleLog.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
+consoleLog.BorderSizePixel = 0
+consoleLog.ScrollBarThickness = 4
+consoleLog.ScrollBarImageColor3 = BORDER
+consoleLog.CanvasSize = UDim2.new(0, 0, 0, 0)
+consoleLog.AutomaticCanvasSize = Enum.AutomaticSize.Y
+consoleLog.Visible = false
+consoleLog.Parent = panel
+local conCorner = Instance.new("UICorner") conCorner.CornerRadius = UDim.new(0, 10) conCorner.Parent = consoleLog
+local conPad = Instance.new("UIPadding")
+conPad.PaddingTop = UDim.new(0, 8) conPad.PaddingBottom = UDim.new(0, 8)
+conPad.PaddingLeft = UDim.new(0, 10) conPad.PaddingRight = UDim.new(0, 10)
+conPad.Parent = consoleLog
+local conLayout = Instance.new("UIListLayout")
+conLayout.Padding = UDim.new(0, 4)
+conLayout.SortOrder = Enum.SortOrder.LayoutOrder
+conLayout.Parent = consoleLog
+local consoleOrder = 0
+local showingConsole = false
+local function addConsoleLine(line)
+	consoleOrder += 1
+	pcall(function()
+		local lbl = Instance.new("TextLabel")
+		lbl.LayoutOrder = consoleOrder
+		lbl.Size = UDim2.new(1, -4, 0, 0)
+		lbl.AutomaticSize = Enum.AutomaticSize.Y
+		lbl.BackgroundTransparency = 1
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.TextYAlignment = Enum.TextYAlignment.Top
+		lbl.TextWrapped = true
+		lbl.Font = Enum.Font.Code
+		lbl.TextSize = 11
+		lbl.TextColor3 = Color3.fromRGB(255, 120, 120)
+		lbl.Text = tostring(line):sub(1, 2000)
+		lbl.Parent = consoleLog
+		task.delay(0.05, function()
+			pcall(function()
+				consoleLog.CanvasPosition = Vector2.new(0, math.max(0, consoleLog.AbsoluteCanvasSize.Y - consoleLog.AbsoluteWindowSize.Y))
+			end)
+		end)
+	end)
+end
+-- flush lines logged before GUI existed, then go live
+for _, line in ipairs(ConsoleLines) do addConsoleLine(line) end
+ConsoleSink = addConsoleLine
+local function setTab(console)
+	showingConsole = console
+	consoleLog.Visible = console
+	chatLog.Visible = not console
+	consoleBtn.TextColor3 = console and Color3.fromRGB(255,255,255) or DIM
+	consoleBtn.BackgroundColor3 = console and ACCENT or SURF
+end
+consoleBtn.MouseButton1Click:Connect(function() setTab(not showingConsole) end)
 
 local chatLog = Instance.new("ScrollingFrame")
 chatLog.Size = UDim2.new(1, -24, 0, 160)
@@ -1401,7 +1499,9 @@ scanBtn.MouseButton1Click:Connect(function()
 		scanning = false
 		pcall(function() scanBtn.Text = "SCAN" end)
 		if status == 0 then
-			addChat("Hekz", "SCAN: request blocked (" .. data:sub(1, 200) .. "). Your executor's HTTP is failing — try paste-method run, or a different executor.")
+			clog("scan", "GET " .. murl .. " blocked: " .. data:sub(1, 2000))
+			addChat("Hekz", "SCAN: request blocked (" .. data:sub(1, 200) .. "). Full error in CONSOLE tab.")
+			setTab(true)
 			return
 		end
 		if status ~= 200 then
@@ -1415,7 +1515,9 @@ scanBtn.MouseButton1Click:Connect(function()
 				end
 			end)
 			if why == "" then why = " — " .. data:sub(1, 200) end
-			addChat("Hekz", "SCAN: HTTP " .. status .. why)
+			clog("scan", "GET " .. murl .. " -> HTTP " .. status .. " body: " .. data:sub(1, 2000))
+			addChat("Hekz", "SCAN: HTTP " .. status .. why .. " (full in CONSOLE)")
+			setTab(true)
 			return
 		end
 		local dec = nil
@@ -1544,10 +1646,16 @@ local function sendMsg()
 		-- agent-first: the model thinks via askAI; without a key there is no brain
 		local ok, res = pcall(askAI, msg)
 		reply = ok and res or ("BRAIN ERROR: " .. tostring(res):sub(1, 300))
+		if not ok then clog("brain", tostring(res):sub(1, 2000)) end
 		hideTyping()
 		pushHist("assistant", reply)
 		addChat("Hekz", reply)
 		input.PlaceholderText = tostring(reply):sub(1, 60)
+		-- any failure text points at CONSOLE and auto-opens it so you see the real error
+		local low = tostring(reply):lower()
+		if low:find("error", 1, true) or low:find("blocked", 1, true) or low:find("non-json", 1, true) or low:find("empty reply", 1, true) then
+			setTab(true)
+		end
 		busy = false
 	end)
 end
