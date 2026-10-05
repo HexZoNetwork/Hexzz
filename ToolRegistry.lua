@@ -123,16 +123,8 @@ local function runLuau(code, ctx)
 
 	local player = ctx and ctx.player or nil
 
-	-- Wrap so bare expressions also return: `1+1` -> 2, statements run normally.
-	local fn, err = loadstring(code)
-	if not fn then
-		fn, err = loadstring("return (" .. code .. ")")
-	end
-	if not fn then
-		return "EXEC ERROR: " .. tostring(err):sub(1, 500)
-	end
-
-	-- Capture print() output during exec
+	-- Capture print() output during exec. NOTE: compile AFTER swapping print —
+	-- chunks bind globals at compile time, so compile in the env it runs in.
 	local oldPrint = print
 	local logs = {}
 	print = function(...)
@@ -143,14 +135,23 @@ local function runLuau(code, ctx)
 		table.insert(logs, table.concat(parts, "  "))
 	end
 
+	-- Wrap so bare expressions also return: `1+1` -> 2, statements run normally.
+	local fn, err = loadstring(code)
+	if not fn then
+		fn, err = loadstring("return (" .. code .. ")")
+	end
+	if not fn then
+		print = oldPrint
+		return "EXEC ERROR: " .. tostring(err):sub(1, 500)
+	end
+
 	local results = { pcall(function()
-		-- expose caller to chunk via globals the chunk can read
-		_G.HEKZ_ME = player
+		HEKZ_ME = player
 		return fn()
 	end) }
 
 	print = oldPrint
-	_G.HEKZ_ME = nil
+	HEKZ_ME = nil
 
 	local ok = table.remove(results, 1)
 	local out = {}
@@ -219,9 +220,11 @@ function ToolRegistry:describe()
 		"lighting_info {} — Lighting/clock/weather props.",
 		"spawn_part { name, x,y,z, sx,sy,sz, r,g,b } — build a part (no coords = near you).",
 		"teleport_me { x,y,z OR target=\"PlayerName or Workspace.Part\" } — move yourself.",
+		"bring { target=\"PlayerName or all\" } — pull others to you.",
 		"delete_object { path=\"Workspace.X\" } — destroy one object.",
 		"http_fetch { url=\"https://...\" } — GET a URL (HTTP Requests must be ON).",
 		"read_script { name = \"<Name or Workspace.A.B>\" } — read ANY script, no restriction.",
+		"write_script { path = \"ReplicatedStorage.Hello\", class = \"ModuleScript\", source = \"...\" } — write a script, then exec it.",
 		"exec { code = \"<Luau ONLY>\" } — run ANY Luau via loadstring, full game access.",
 	}, "\n")
 end
@@ -242,9 +245,11 @@ function ToolRegistry:openAIDefs()
 		{ name = "lighting_info", desc = "Lighting / time-of-day / fog props.", params = { type = "object", properties = {} } },
 		{ name = "spawn_part", desc = "Build an anchored part (defaults near the player).", params = { type = "object", properties = { name = { type = "string" }, x = { type = "number" }, y = { type = "number" }, z = { type = "number" }, sx = { type = "number" }, sy = { type = "number" }, sz = { type = "number" }, r = { type = "number" }, g = { type = "number" }, b = { type = "number" } } } },
 		{ name = "teleport_me", desc = "Teleport the chatting player to x,y,z or to a target object/player.", params = { type = "object", properties = { x = { type = "number" }, y = { type = "number" }, z = { type = "number" }, target = { type = "string" } } } },
+		{ name = "bring", desc = "Pull other player(s) to the chatting player. target = player name or 'all'.", params = { type = "object", properties = { target = { type = "string" } } } },
 		{ name = "delete_object", desc = "Destroy one object by dotted path.", params = { type = "object", properties = { path = { type = "string" } }, required = { "path" } } },
 		{ name = "http_fetch", desc = "GET a URL, return truncated text. HTTP Requests must be ON.", params = { type = "object", properties = { url = { type = "string" } }, required = { "url" } } },
 		{ name = "read_script", desc = "Read ANY Script/LocalScript/ModuleScript source by name or dotted path.", params = { type = "object", properties = { name = { type = "string" } } } },
+		{ name = "write_script", desc = "Write a Script/LocalScript/ModuleScript (Luau source) at a dotted path, then run it with exec.", params = { type = "object", properties = { path = { type = "string" }, class = { type = "string" }, source = { type = "string" } }, required = { "path", "source" } } },
 		{ name = "exec", desc = "UNIVERSAL: run raw LUAU ONLY on the game server via loadstring (never Go). Full game access.", params = { type = "object", properties = { code = { type = "string", description = "Luau chunk, e.g. return game.PlaceId" } }, required = { "code" } } },
 	}
 	local out = {}
@@ -366,6 +371,46 @@ function ToolRegistry:run(name, args, ctx)
 		local total = #src
 		if #src > max then src = src:sub(1, max) .. ("\n...[truncated, total %d chars]"):format(total) end
 		return "SCRIPT " .. hit:GetFullName() .. " (" .. total .. " chars):\n" .. src
+
+	elseif name == "write_script" then
+		-- AI writes a real Script/LocalScript/ModuleScript, then exec can run it.
+		local path = tostring(args.path or args.name or "")
+		local class = tostring(args.class or "ModuleScript")
+		if class:lower() == "modulescript" then class = "ModuleScript"
+		elseif class:lower() == "localscript" then class = "LocalScript"
+		elseif class:lower() == "script" then class = "Script" end
+		local source = tostring(args.source or args.code or "")
+		if path == "" then
+			return "Usage: write_script { path = \"ReplicatedStorage.Hello\", class = \"ModuleScript\", source = \"return 1\" }"
+		end
+		if class ~= "Script" and class ~= "LocalScript" and class ~= "ModuleScript" then
+			return "ERROR: class must be Script, LocalScript or ModuleScript (Luau only)."
+		end
+		if source == "" then
+			return "ERROR: empty source — provide { source = \"...\" } with Luau code."
+		end
+		local parentPath, leaf = path:match("^(.-)%.([^%.]+)$")
+		local parent = nil
+		if parentPath then
+			parent = resolvePath(parentPath)
+		else
+			leaf = path
+			parent = game.ReplicatedStorage
+		end
+		if not parent then
+			return "NOT FOUND parent '" .. tostring(parentPath) .. "' — try workspace_tree first."
+		end
+		local ok, inst = pcall(function()
+			local s = Instance.new(class)
+			s.Name = leaf
+			s.Source = source
+			s.Parent = parent
+			return s
+		end)
+		if not ok or not inst then
+			return "WRITE ERROR: " .. tostring(inst):sub(1, 300)
+		end
+		return "WROTE " .. inst:GetFullName() .. " (" .. class .. ", " .. #source .. " chars). ModuleScripts run via exec { code = \"require(game.ReplicatedStorage." .. tostring(leaf) .. ")\" }."
 
 	elseif name == "exec" or name == "exec_luau" or name == "loadstring" or name == "exec_code" then
 		local code = args.code or args.script or args.source or args.text or args.expression or ""
@@ -559,6 +604,42 @@ function ToolRegistry:run(name, args, ctx)
 		end)
 		if not ok then return "TELEPORT ERROR: " .. tostring(err):sub(1, 300) end
 		return "TELEPORTED " .. player.Name .. " to " .. fmtV3(dest)
+
+	elseif name == "bring" then
+		-- Pull other player(s) to the chatting player. Server authority: real.
+		local who = tostring(args.target or args.player or args.name or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+		local me = ctx and ctx.player or nil
+		if not me then return "ERROR: no player in context" end
+		local origin = playerPos(me)
+		if not origin then return "ERROR: your character has no position yet (spawning?)" end
+		local targets = {}
+		if who == "" or who == "all" or who == "everyone" or who == "them" or who == "everybody" then
+			for _, p in ipairs(game.Players:GetPlayers()) do
+				if p ~= me then table.insert(targets, p) end
+			end
+		else
+			for _, p in ipairs(game.Players:GetPlayers()) do
+				if p ~= me and p.Name:lower():find(who, 1, true) then
+					table.insert(targets, p)
+				end
+			end
+		end
+		if #targets == 0 then return "NOT FOUND player '" .. who .. "' — try players first." end
+		local moved, names = 0, {}
+		for i, p in ipairs(targets) do
+			local dest = origin + Vector3.new((i % 5) * 4 - 8, 3, math.floor(i / 5) * 4 + 5)
+			local ok = pcall(function()
+				local c = p.Character
+				local hrp = c and c:FindFirstChild("HumanoidRootPart")
+				if not hrp then error("no character") end
+				c:PivotTo(CFrame.new(dest))
+			end)
+			if ok then
+				moved = moved + 1
+				table.insert(names, p.Name)
+			end
+		end
+		return "BROUGHT " .. moved .. "/" .. #targets .. " to " .. me.Name .. " (" .. table.concat(names, ", "):sub(1, 300) .. ")"
 
 	elseif name == "delete_object" then
 		local path = tostring(args.path or "")

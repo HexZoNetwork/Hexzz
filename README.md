@@ -16,12 +16,13 @@ and runs all tools itself in Luau.
 GUI panel input → HekzChat:FireServer(text) → HekzServer (ServerScriptService)
   → no allowlist, cooldown only
   → per-player history (rolling N)
-  → Brain.Mode = local → ToolRegistry keyword routing (offline, no key)
-  → Brain.Mode = ai     → HttpService POST AIBase/chat/completions DIRECTLY
+  → HttpService POST AIBase/chat/completions DIRECTLY (agent loop, bots-style)
         game holds AIKey, sends OpenAI tools = ToolRegistry:openAIDefs(),
-        AI calls tools itself, game executes them HERE (max Brain.MaxRounds)
-  → reply via HekzReply:FireClient + HekzLastReply → GUI chat log + Output
+        MODEL decides: answers directly or call tools → game executes them
+        HERE → results fed back → repeat (max Brain.MaxRounds)
+  → reply = the model's own text, verbatim, via HekzReply + HekzLastReply
 Bubble chat → Player.Chatted → same handleMessage (fallback)
+No key → short notice. No keyword routing, no canned replies, anywhere.
 ```
 
 Talk in the panel: `what time is it`, `calc (2+3)*4`, `scan the map`,
@@ -53,6 +54,7 @@ restriction, chain up to `Brain.MaxRounds` steps. Server sends
 | `delete_object` | destroy one object (`path`) |
 | `http_fetch` | GET a URL from the game (HTTP Requests ON) |
 | `read_script` | read ANY Script by name or dotted path (no restriction) |
+| `write_script` | code a real Script/ModuleScript at a path, then `exec`/require it |
 | `exec` | UNIVERSAL: run any Luau, print + return (`code`, aliases `run`/`execute`/`loadstring`) |
 
 ## Files → Studio (5 Luau files, no Go needed)
@@ -93,8 +95,9 @@ Delta / Fluxus / Solara style executors.
    `https://api.openai.com/v1` — a full `.../chat/completions` URL works
    too), then tap **SCAN** to list the gateway's `/models` and tap one
    (or type the id into **MODEL** by hand) → **SAVE**, tap the **AI/LOCAL**
-   pill to green AI. Without a key it runs the offline brain (keywords
-   still work). Key stays on your client only.
+   pill to green AI. Without a key you get a short notice instead of a
+   brain (the model does ALL thinking — no keyword fallback). Key stays
+   on your client only.
    (`getgenv().HEKZ_AIKEY` before running still works too.)
 
 **If nothing happens:**
@@ -147,3 +150,16 @@ Enable: Game Settings → Security → HTTP Requests ON (only for `ai` mode + `h
 No allowlist + `exec`/`spawn`/`delete` = anyone can run/build/destroy.
 Fine for solo pretest. Before sharing, gate `handleMessage` and those tools
 by `player.UserId` yourself.
+
+## Tests without Roblox (`test.sh`)
+
+```bash
+./test.sh   # needs network ONCE to fetch the Luau runtime (cached in .testbin/)
+```
+
+Runs on real Luau (zero Roblox): syntax-checks every file with the actual
+parser, then executes `ToolRegistry` + the full agent loop against a mocked
+game with a scripted fake model — `calc`, `exec` (+print capture, aliases,
+Go guard), `write_script` round-trip, `bring`/`teleport`, verbatim model
+text, native tool_calls, ```tool text calls, no-key notice. Exit `0` = all
+green. The executor panel itself still needs eyeballing in a real executor.

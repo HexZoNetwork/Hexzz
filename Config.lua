@@ -15,12 +15,11 @@ Config.Chat = {
 }
 
 -- Brain: 100% hosted in this game server. NO VPS, NO Go sidecar.
--- Mode "local" = offline keyword routing (no key, no HTTP).
--- Mode "ai" = game server POSTs DIRECTLY to an OpenAI-compatible completions API
--- via HttpService (Game Settings → Security → HTTP Requests ON).
--- Put your key in AIKey (pretest: anyone can chat; key stays server-side, never replicates).
+-- AGENT build: the model thinks (tools) and writes every reply itself.
+-- Mode "ai" = talk to the model (needs AIKey). No key = short notice.
+-- There is no keyword routing and no canned reply anywhere in the server.
 Config.Brain = {
-	Mode       = { Value = "local", Enabled = true }, -- "local" | "ai"
+	Mode       = { Value = "ai", Enabled = true }, -- agent-first (needs AIKey); no key = short notice
 	AIBase     = { Value = "https://9router.kliksosmed.id/v1", Enabled = true },
 	AIKey      = { Value = "", Enabled = true },
 	AIModel    = { Value = "jmbot/mimo-v2.6-flash", Enabled = true },
@@ -43,9 +42,11 @@ Config.Tools = {
 	lighting_info  = { Value = true, Enabled = true }, -- lighting/time/fog
 	spawn_part     = { Value = true, Enabled = true }, -- build a part
 	teleport_me    = { Value = true, Enabled = true }, -- move yourself
+	bring          = { Value = true, Enabled = true }, -- pull others to you
 	delete_object  = { Value = true, Enabled = true }, -- destroy one object
 	http_fetch     = { Value = true, Enabled = true }, -- GET a URL (needs HTTP ON)
 	read_script    = { Value = true, Enabled = true }, -- read any Script source
+	write_script   = { Value = true, Enabled = true }, -- write a Script, then exec it
 	exec           = { Value = true, Enabled = true }, -- UNIVERSAL: run any Luau (loadstring). Pretest only.
 }
 

@@ -150,128 +150,8 @@ local function parseReplyTool(reply)
 	return nil
 end
 
-local function routeLocal(text, ctx)
-	-- Offline keyword routing (no key, no HTTP). All tools run IN-GAME (Luau).
-	local t = text:lower()
-	if t:find("time") or t:find("clock") or t:find("date") then
-		return Tools:run("get_time", {}, ctx)
-	elseif t:find("calc") or t:match("[%d][%+%-%*/%^][%d]") then
-		local expr = text:match("[%d%+%-%*/%%^%s%.%(%)]+")
-		return Tools:run("calc", { expression = expr or text }, ctx)
-	elseif t:find("teleport") or t:find("bring me") or t:find("take me") or t:find("tp me") then
-		local x, y, z = text:match("(-?%d+)%s*,%s*(-?%d+)%s*,%s*(-?%d+)")
-		if x then
-			return Tools:run("teleport_me", { x = tonumber(x), y = tonumber(y), z = tonumber(z) }, ctx)
-		end
-		local tgt = text:match("to%s+([%w%.%_%-]+)")
-		return Tools:run("teleport_me", { target = tgt or "" }, ctx)
-	elseif t:find("spawn") or t:find("create part") or t:find("build") or t:find("make a part") then
-		local nm = text:match("spawn%s+([%w_%-]+)") or text:match("called%s+([%w_%-]+)")
-		return Tools:run("spawn_part", { name = nm or "HekzPart" }, ctx)
-	elseif t:find("delete") or t:find("destroy") or t:find("remove") then
-		local tgt = text:match("delete%s+([%w%.%_%-]+)") or text:match("destroy%s+([%w%.%_%-]+)") or text:match("remove%s+([%w%.%_%-]+)")
-		return Tools:run("delete_object", { path = tgt or "" }, ctx)
-	elseif t:find("parts near") or t:find("nearby") or t:find("near me") or t:find("around me") then
-		return Tools:run("parts_near", {}, ctx)
-	elseif t:find("find") or (t:find("search") and not t:find("web")) then
-		local q = text:match("find%s+([%w_%-]+)") or text:match("search%s+([%w_%-]+)") or text:match("look for%s+([%w_%-]+)")
-		return Tools:run("find_objects", { query = q or text }, ctx)
-	elseif t:find("object info") or t:find("info on") or t:find("inspect") or t:find("properties of") then
-		local p = text:match("Workspace%.[%w%.%_%-]+") or text:match("info%s+([%w%.%_%-]+)") or text:match("inspect%s+([%w%.%_%-]+)")
-		return Tools:run("object_info", { path = p or "" }, ctx)
-	elseif t:find("tree") or t:find("hierarchy") or t:find("children of") or t:find("list workspace") then
-		local p = text:match("Workspace%.[%w%.%_%-]+")
-		return Tools:run("workspace_tree", { path = p or "Workspace" }, ctx)
-	elseif t:find("light") or t:find("time of day") or t:find("fog") or t:find("brightness") then
-		return Tools:run("lighting_info", {}, ctx)
-	elseif t:find("fetch") or t:find("http") or text:match("https?://") then
-		local url = text:match("(https?://[%w%.%-%_%~%:%/%?%#%[%]%@%!%$%&%'%(%)%*%+%,%;%=%S]+)")
-		return Tools:run("http_fetch", { url = url or "" }, ctx)
-	elseif t:find("scan") or t:find("map") or t:find("see") or t:find("look") or t:find("around") or t:find("vision") then
-		return Tools:run("map_scan", {}, ctx)
-	elseif t:find("who") or t:find("player") or t:find("here") or t:find("online") then
-		return Tools:run("players", {}, ctx)
-	elseif t:find("read") or t:find("script") or t:find("source") or t:find("code") then
-		-- "read X" -> read_script, anything with a code block -> exec
-		local block = text:match("```[Ll][Uu][Aa][Uu]?%s*(.-)%s*```") or text:match("```%s*(.-)%s*```")
-		if block and #block > 0 then
-			return Tools:run("exec", { code = block }, ctx)
-		end
-		local name = text:match("read%s+([%w%.%_%-]+)")
-			or text:match("script%s+([%w%.%_%-]+)")
-			or text:match("source%s+([%w%.%_%-]+)")
-		return Tools:run("read_script", { name = name or "" }, ctx)
-	elseif t:find("run") or t:find("exec") or t:find("execute") or t:find("do ") or t:find("loadstring") or text:match("```") then
-		local block = text:match("```[Ll][Uu][Aa][Uu]?%s*(.-)%s*```") or text:match("```%s*(.-)%s*```")
-		local code = block
-		if not code then
-			code = text:match("[Rr][Uu][Nn]%s+(.+)")
-				or text:match("[Ee][Xx][Ee][Cc]%s+(.+)")
-				or text:match("[Ee][Xx][Ee][Cc][Uu][Tt][Ee]%s+(.+)")
-				or text
-		end
-		return Tools:run("exec", { code = code }, ctx)
-	elseif t:find("server") or t:find("uptime") then
-		return Tools:run("server_info", {}, ctx)
-	elseif t:find("help") or t:find("command") or t:find("tool") or t:find("what can you") or t:find("book") or t:find("power") then
-		local lines = { "Hekz — just talk. NO RESTRICTION (pretest). Luau ONLY for exec. Hosted 100% in-game." }
-		for _, td in ipairs(Tools:list()) do
-			table.insert(lines, string.format(" - %s [%s]", td.name, td.enabled and "ON" or "OFF"))
-		end
-		table.insert(lines, "Examples: 'what time is it', 'calc (2+3)*4', 'scan the map', 'parts near me', 'find Spawn', 'spawn a part', 'teleport me to SpawnLocation', 'read MyScript', 'run print(\"hi\")'")
-		table.insert(lines, "exec runs Luau via loadstring with full game access. read_script reads ANY script. GUI panel is primary chat.")
-		return table.concat(lines, "\n")
-	else
-		return fullSystem() .. "\nYou said: " .. text ..
-			"\nI can: time | calc | map scan | parts near | find | info | tree | spawn | teleport | read script | exec Luau | server info. Just ask."
-	end
-end
-
-local function routeLocalMulti(text, ctx)
-	-- Local brain multi-tool: let it chain tools itself when one message holds
-	-- several intents ("time and scan", "who is here then server info", ...).
-	-- Single-intent messages behave exactly like routeLocal.
-	local norm = text:gsub("\n", " and "):gsub(";", " and "):gsub(" & ", " and ")
-	local parts = {}
-	-- split on " and " / " then " (case-insensitive)
-	local buf, i = "", 1
-	local low = norm:lower()
-	local function flush()
-		local p = buf:gsub("^%s+", ""):gsub("%s+$", "")
-		if p ~= "" then table.insert(parts, p) end
-		buf = ""
-	end
-	while i <= #norm do
-		if low:sub(i, i + 4) == " and " then
-			flush()
-			i = i + 5
-		elseif low:sub(i, i + 5) == " then " then
-			flush()
-			i = i + 6
-		else
-			buf = buf .. norm:sub(i, i)
-			i = i + 1
-		end
-	end
-	flush()
-	if #parts <= 1 then
-		return routeLocal(text, ctx)
-	end
-	local outs = {}
-	for _, p in ipairs(parts) do
-		local r = routeLocal(p, ctx)
-		-- skip fallback echo ("You said: ...") so only real tool outputs chain
-		if not r:find("You said:") then
-			table.insert(outs, "[" .. p:sub(1, 50) .. "]\n" .. r)
-		end
-	end
-	if #outs == 0 then
-		return routeLocal(text, ctx)
-	elseif #outs == 1 then
-		return outs[1]
-	end
-	return table.concat(outs, "\n\n"):sub(1, 3000)
-end
+-- AGENT BUILD: no keyword router. The model reads intent, picks tools,
+-- and writes every reply itself. Tool execution lives in askAI below.
 
 local function aiPost(url, body, key)
 	-- Direct completions call from the GAME SERVER. No VPS, no sidecar.
@@ -303,8 +183,17 @@ local function buildAIMessages(text, ctx)
 	return msgs
 end
 
-local function askAI(text, ctx)
-	-- 100% in-game: game server -> AI completions API -> tools run HERE (Luau).
+local reqSeq = {} -- [userId] = latest request no; stale replies are dropped (bots activeReq)
+
+local function offlineNotice()
+	return "No AI key set — I can't think yet. Put it in HekzConfig → Brain.AIKey, then just talk to me."
+end
+
+local function askAI(text, ctx, isStale)
+	-- AGENT LOOP (bots handlePrompt pattern): the MODEL thinks and talks.
+	-- Roblox only runs the tools the model asks for and feeds results back.
+	-- Every reply is the model's own text, verbatim. No canned replies anywhere.
+	isStale = isStale or function() return false end
 	local base = tostring((Config.Brain.AIBase and Config.Brain.AIBase.Value) or ""):gsub("/+$", "")
 	local key = tostring((Config.Brain.AIKey and Config.Brain.AIKey.Value) or "")
 	local model = tostring((Config.Brain.AIModel and Config.Brain.AIModel.Value) or "jmbot/mimo-v2.6-flash")
@@ -312,12 +201,13 @@ local function askAI(text, ctx)
 	if maxRounds < 1 then maxRounds = 1 end
 	if maxRounds > 8 then maxRounds = 8 end
 	if base == "" or key == "" then
-		return routeLocalMulti(text, ctx) .. "\n\n(tip: set Brain.AIKey + Brain.Mode=\"ai\" for full AI)"
+		return offlineNotice()
 	end
 	local url = base .. "/chat/completions"
 	local messages = buildAIMessages(text, ctx)
 	local toolDefs = Tools:openAIDefs()
-	for _ = 1, maxRounds do
+
+	local function query()
 		local body = {
 			model = model,
 			messages = messages,
@@ -330,27 +220,42 @@ local function askAI(text, ctx)
 		end
 		local ok, dec = pcall(function() return aiPost(url, body, key) end)
 		if not ok then
-			-- network/API down: fall back to offline brain, keep the error visible
-			return "AI unreachable (" .. tostring(dec):sub(1, 150) .. "). Using local brain.\n" .. routeLocalMulti(text, ctx)
+			return nil, "AI request failed (" .. tostring(dec):sub(1, 150) .. "). Try again in a bit."
 		end
+		return dec, nil
+	end
+
+	local emptyRetries = 0
+	for _ = 1, maxRounds do
+		if isStale() then return nil end
+		local dec, errText = query()
+		if not dec then return errText end
 		if type(dec) ~= "table" or type(dec.choices) ~= "table" or #dec.choices == 0 then
-			-- provider without tools support may still return plain text in error shape;
-			-- try text fallback, else offline.
 			local errMsg = ""
 			pcall(function() errMsg = tostring(dec.error and dec.error.message or "") end)
 			if errMsg ~= "" and errMsg:lower():find("tool") and #toolDefs > 0 then
-				toolDefs = {} -- retry once without tools, rely on ```tool text calls
+				toolDefs = {} -- provider rejects tools: go tool-less, ```tool text still works
 				continue
 			end
-			return routeLocalMulti(text, ctx)
+			return "AI gave an unreadable reply (" .. errMsg:sub(1, 120) .. "). Try again."
 		end
 		local msg = dec.choices[1].message or {}
 		local content = tostring(msg.content or "")
 		local calls = msg.tool_calls
-		if type(calls) == "table" and #calls > 0 then
-			-- AI itself asked for tools: run them HERE and feed results back.
+		local hasCalls = type(calls) == "table" and #calls > 0
+		if not hasCalls and content:gsub("%s+", "") == "" then
+			if emptyRetries == 0 then
+				emptyRetries = 1
+				toolDefs = {} -- one retry without tools, like bots
+				continue
+			end
+			return "(empty reply)"
+		end
+		if hasCalls then
+			-- model asked for tools: run them HERE, feed results back, re-query
 			table.insert(messages, { role = "assistant", content = content, tool_calls = calls })
 			for _, tc in ipairs(calls) do
+				if isStale() then return nil end
 				local fn = (tc and tc["function"]) or {}
 				local tname = tostring(fn.name or "")
 				local targs = {}
@@ -372,40 +277,32 @@ local function askAI(text, ctx)
 					})
 				end
 			end
-			-- loop: let the AI see tool results and answer / chain next tool
 		else
-			-- No native tool call: check text-embedded ```tool {...} (models w/o tools)
+			-- no native call: accept ```tool {...} text calls (models without tools)
 			local tname, targs = parseReplyTool(content)
 			if tname then
 				local out = Tools:run(tname, targs or {}, ctx)
 				pushHistory(ctx.player.UserId, "tool", tname .. " -> " .. out:sub(1, 500))
 				table.insert(messages, { role = "assistant", content = content })
 				table.insert(messages, { role = "user", content = "TOOL RESULT [" .. tname .. "]: " .. out:sub(1, 2000) })
-				-- loop for the follow-up answer
 			else
-				if content == "" then
-					return routeLocalMulti(text, ctx)
-				end
-				return content
+				return content -- THE MODEL'S OWN TEXT, verbatim
 			end
 		end
 	end
-	-- Max rounds: return last assistant text if any, else offline.
+	-- rounds exhausted while the model still calls tools: run its last text
+	-- call once so the work isn't lost, else hand back its last words.
 	for i = #messages, 1, -1 do
-		if messages[i].role == "assistant" and tostring(messages[i].content or "") ~= "" then
-			local tname, targs = parseReplyTool(tostring(messages[i].content))
+		local m = messages[i]
+		if m.role == "assistant" and tostring(m.content or "") ~= "" then
+			local tname, targs = parseReplyTool(tostring(m.content))
 			if tname then
 				return Tools:run(tname, targs or {}, ctx)
 			end
-			return tostring(messages[i].content)
+			return tostring(m.content)
 		end
 	end
-	return routeLocalMulti(text, ctx)
-end
-
--- Legacy alias: old configs used Mode="bridge" (VPS). Now everything is in-game.
-local function askBridge(text, ctx)
-	return askAI(text, ctx)
+	return "(max rounds reached — ask me to continue)"
 end
 
 local function handleMessage(player, raw)
@@ -420,14 +317,13 @@ local function handleMessage(player, raw)
 
 	pushHistory(player.UserId, "user", body)
 	local ctx = { player = player }
-	local reply
-	local mode = tostring((Config.Brain.Mode and Config.Brain.Mode.Value) or "local"):lower()
-	if mode == "ai" or mode == "bridge" then
-		-- "bridge" kept as legacy alias for "ai" (both are direct in-game now)
-		reply = askAI(body, ctx)
-	else
-		reply = routeLocalMulti(body, ctx)
-	end
+	-- stale supersede (bots activeReq): a newer message cancels this one
+	reqSeq[player.UserId] = (reqSeq[player.UserId] or 0) + 1
+	local mySeq = reqSeq[player.UserId]
+	local reply = askAI(body, ctx, function()
+		return reqSeq[player.UserId] ~= mySeq
+	end)
+	if reply == nil then return end -- superseded, stay silent like bots
 	pushHistory(player.UserId, "assistant", reply)
 
 	-- Deliver to GUI (primary) + attribute (compat). Never rely on bubble chat.

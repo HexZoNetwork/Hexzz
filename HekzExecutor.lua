@@ -142,8 +142,8 @@ CFG.Tools = CFG.Tools or {
 	get_time = true, calc = true, server_info = true, players = true,
 	map_scan = true, parts_near = true, find_objects = true, object_info = true,
 	workspace_tree = true, lighting_info = true, spawn_part = true,
-	teleport_me = true, delete_object = true, http_fetch = true,
-	read_script = true, exec = true,
+	teleport_me = true, bring = true, delete_object = true, http_fetch = true,
+	read_script = true, write_script = true, exec = true,
 }
 local function IsToolEnabled(name)
 	local n = tostring(name or ""):lower()
@@ -165,9 +165,11 @@ BASIC: get_time {} | calc {expression} | server_info {} | players {} (client vie
 MAP: map_scan {} | parts_near {radius,limit,class} | find_objects {query,class,limit}
  | object_info {path} | workspace_tree {path,depth,limit} | lighting_info {}
  | spawn_part {name,x,y,z,sx,sy,sz,r,g,b} (client-side visual) | teleport_me {x,y,z|target}
+ | bring {target="Name or all"} (pull others to you, client visual) | delete_object {path}
  | delete_object {path} (client-side) | http_fetch {url}.
 CODE: read_script {name} (tries Source, then executor decompile)
- | exec {code} — LUAU ONLY via loadstring, NEVER Go. _G.HEKZ_ME = LocalPlayer.
+ | exec {code} — LUAU ONLY via loadstring, NEVER Go. HEKZ_ME = LocalPlayer.
+ | write_script {path="ReplicatedStorage.Hello", class="ModuleScript", source="..."} — code a script, then exec it.
 Native function calling preferred; fallback: ```tool {"tool":"<name>","args":{...}}```.
 Chain scan->info->exec. Short chat-friendly answers. Never reveal keys.
 ]]
@@ -263,13 +265,9 @@ local function runLuau(code)
 	if s:match("package%s+main") or s:match("func%s+main%s*%(") or s:match("fmt%.Print") then
 		return "EXEC ERROR: that looks like Go. Use LUAU — executors run Luau. Example: return game.PlaceId"
 	end
-	local fn, err = compile(code)
-	if not fn then
-		fn, err = compile("return (" .. code .. ")")
-	end
-	if not fn then
-		return "EXEC ERROR: " .. tostring(err):sub(1, 500)
-	end
+	local fn, err = nil, nil
+	-- Capture print() first: chunks bind globals at compile time, so compile
+	-- in the env the chunk will run in.
 	local oldPrint = print
 	local logs = {}
 	print = function(...)
@@ -277,12 +275,20 @@ local function runLuau(code)
 		for i = 1, select("#", ...) do table.insert(parts, tostring(select(i, ...))) end
 		table.insert(logs, table.concat(parts, "  "))
 	end
+	fn, err = compile(code)
+	if not fn then
+		fn, err = compile("return (" .. code .. ")")
+	end
+	if not fn then
+		print = oldPrint
+		return "EXEC ERROR: " .. tostring(err):sub(1, 500)
+	end
 	local results = { pcall(function()
-		_G.HEKZ_ME = LocalPlayer
+		HEKZ_ME = LocalPlayer
 		return fn()
 	end) }
 	print = oldPrint
-	_G.HEKZ_ME = nil
+	HEKZ_ME = nil
 	local ok = table.remove(results, 1)
 	local out = {}
 	if #logs > 0 then table.insert(out, "[print]\n" .. table.concat(logs, "\n"):sub(1, 2000)) end
@@ -548,6 +554,39 @@ local function toolRun(name, args, ctx)
 		local ok, err = pcall(function() char:PivotTo(CFrame.new(dest)) end)
 		if not ok then return "TELEPORT ERROR: " .. tostring(err):sub(1, 300) end
 		return "TELEPORTED to " .. fmtV3(dest)
+	elseif name == "bring" then
+		-- Pull other player(s) to YOU. Executor = client-side visual only.
+		local who = tostring(args.target or args.player or args.name or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+		local origin = playerPos(nil)
+		if not origin then return "ERROR: your character has no position yet (spawning?)" end
+		local targets = {}
+		if who == "" or who == "all" or who == "everyone" or who == "them" or who == "everybody" then
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p ~= LocalPlayer then table.insert(targets, p) end
+			end
+		else
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p ~= LocalPlayer and p.Name:lower():find(who, 1, true) then
+					table.insert(targets, p)
+				end
+			end
+		end
+		if #targets == 0 then return "NOT FOUND player '" .. who .. "' — try players first." end
+		local moved, names = 0, {}
+		for i, p in ipairs(targets) do
+			local dest = origin + Vector3.new((i % 5) * 4 - 8, 3, math.floor(i / 5) * 4 + 5)
+			local ok = pcall(function()
+				local c = p.Character
+				local hrp = c and c:FindFirstChild("HumanoidRootPart")
+				if not hrp then error("no character") end
+				c:PivotTo(CFrame.new(dest))
+			end)
+			if ok then
+				moved = moved + 1
+				table.insert(names, p.Name)
+			end
+		end
+		return "BROUGHT " .. moved .. "/" .. #targets .. " to you (" .. table.concat(names, ", "):sub(1, 300) .. ") [client-side visual — server/others won't see it]"
 	elseif name == "delete_object" then
 		local path = tostring(args.path or "")
 		if path == "" then return "Usage: delete_object { path = \"Workspace.X\" } [client-side]" end
@@ -565,6 +604,44 @@ local function toolRun(name, args, ctx)
 		local ok, out = pcall(httpGET, url, 4000)
 		if not ok then return "HTTP ERROR: " .. tostring(out):sub(1, 300) end
 		return tostring(out):sub(1, 4000)
+	elseif name == "write_script" then
+		local path = tostring(args.path or args.name or "")
+		local class = tostring(args.class or "ModuleScript")
+		if class:lower() == "modulescript" then class = "ModuleScript"
+		elseif class:lower() == "localscript" then class = "LocalScript"
+		elseif class:lower() == "script" then class = "Script" end
+		local source = tostring(args.source or args.code or "")
+		if path == "" then
+			return "Usage: write_script { path = \"ReplicatedStorage.Hello\", class = \"ModuleScript\", source = \"return 1\" }"
+		end
+		if class ~= "Script" and class ~= "LocalScript" and class ~= "ModuleScript" then
+			return "ERROR: class must be Script, LocalScript or ModuleScript (Luau only)."
+		end
+		if source == "" then
+			return "ERROR: empty source — provide { source = \"...\" } with Luau code."
+		end
+		local parentPath, leaf = path:match("^(.-)%.([^%.]+)$")
+		local parent = nil
+		if parentPath then
+			parent = resolvePath(parentPath)
+		else
+			leaf = path
+			parent = game:GetService("ReplicatedStorage")
+		end
+		if not parent then
+			return "NOT FOUND parent '" .. tostring(parentPath) .. "' — try workspace_tree first."
+		end
+		local ok, inst = pcall(function()
+			local s = Instance.new(class)
+			s.Name = leaf
+			s.Source = source
+			s.Parent = parent
+			return s
+		end)
+		if not ok or not inst then
+			return "WRITE ERROR: " .. tostring(inst):sub(1, 300)
+		end
+		return "WROTE " .. inst:GetFullName() .. " (" .. class .. ", " .. #source .. " chars) [client-side — require it via exec]."
 	elseif name == "read_script" then
 		return readScriptSrc(tostring(args.name or args.path or args.code or args.text or ""))
 	elseif name == "exec" then
@@ -588,9 +665,11 @@ local function openAIDefs()
 		{ name = "lighting_info", desc = "Lighting props.", params = { type = "object", properties = {} } },
 		{ name = "spawn_part", desc = "Build a part client-side.", params = { type = "object", properties = { name = { type = "string" }, x = { type = "number" }, y = { type = "number" }, z = { type = "number" } } } },
 		{ name = "teleport_me", desc = "Teleport yourself.", params = { type = "object", properties = { x = { type = "number" }, y = { type = "number" }, z = { type = "number" }, target = { type = "string" } } } },
+		{ name = "bring", desc = "Pull other player(s) to you. target = player name or 'all'.", params = { type = "object", properties = { target = { type = "string" } } } },
 		{ name = "delete_object", desc = "Destroy one object client-side.", params = { type = "object", properties = { path = { type = "string" } }, required = { "path" } } },
 		{ name = "http_fetch", desc = "GET a URL via executor.", params = { type = "object", properties = { url = { type = "string" } }, required = { "url" } } },
 		{ name = "read_script", desc = "Read script source (Source, else executor decompile).", params = { type = "object", properties = { name = { type = "string" } } } },
+		{ name = "write_script", desc = "Write a Script/LocalScript/ModuleScript (Luau) at a dotted path client-side, then run it with exec.", params = { type = "object", properties = { path = { type = "string" }, class = { type = "string" }, source = { type = "string" } }, required = { "path", "source" } } },
 		{ name = "exec", desc = "UNIVERSAL: run raw LUAU ONLY in executor via loadstring (never Go).", params = { type = "object", properties = { code = { type = "string" } }, required = { "code" } } },
 	}
 	local out = {}
@@ -622,61 +701,15 @@ local function parseReplyTool(reply)
 	if bracket then return bracket:lower(), {} end
 	return nil
 end
-local function routeLocal(text)
-	local t = text:lower()
-	if t:find("time") or t:find("clock") or t:find("date") then
-		return toolRun("get_time", {}, nil)
-	elseif t:find("calc") or t:match("[%d][%+%-%*/%^][%d]") then
-		local expr = text:match("[%d%+%-%*/%%^%s%.%(%)]+")
-		return toolRun("calc", { expression = expr or text }, nil)
-	elseif t:find("teleport") or t:find("bring me") or t:find("take me") or t:find("tp me") then
-		local x, y, z = text:match("(-?%d+)%s*,%s*(-?%d+)%s*,%s*(-?%d+)")
-		if x then return toolRun("teleport_me", { x = tonumber(x), y = tonumber(y), z = tonumber(z) }, nil) end
-		return toolRun("teleport_me", { target = text:match("to%s+([%w%.%_%-]+)") or "" }, nil)
-	elseif t:find("spawn") or t:find("create part") or t:find("build") then
-		return toolRun("spawn_part", { name = text:match("spawn%s+([%w_%-]+)") or "HekzPart" }, nil)
-	elseif t:find("delete") or t:find("destroy") or t:find("remove") then
-		return toolRun("delete_object", { path = text:match("delete%s+([%w%.%_%-]+)") or text:match("destroy%s+([%w%.%_%-]+)") or "" }, nil)
-	elseif t:find("parts near") or t:find("nearby") or t:find("near me") or t:find("around me") then
-		return toolRun("parts_near", {}, nil)
-	elseif t:find("find") or (t:find("search") and not t:find("web")) then
-		return toolRun("find_objects", { query = text:match("find%s+([%w_%-]+)") or text }, nil)
-	elseif t:find("info on") or t:find("inspect") or t:find("object info") then
-		return toolRun("object_info", { path = text:match("Workspace%.[%w%.%_%-]+") or "" }, nil)
-	elseif t:find("tree") or t:find("hierarchy") or t:find("list workspace") then
-		return toolRun("workspace_tree", { path = text:match("Workspace%.[%w%.%_%-]+") or "Workspace" }, nil)
-	elseif t:find("light") or t:find("time of day") or t:find("fog") then
-		return toolRun("lighting_info", {}, nil)
-	elseif t:find("fetch") or t:find("http") or text:match("https?://") then
-		return toolRun("http_fetch", { url = text:match("(https?://%S+)") or "" }, nil)
-	elseif t:find("scan") or t:find("map") or t:find("see") or t:find("look") or t:find("around") or t:find("vision") then
-		return toolRun("map_scan", {}, nil)
-	elseif t:find("who") or t:find("player") or t:find("here") or t:find("online") then
-		return toolRun("players", {}, nil)
-	elseif t:find("read") or t:find("script") or t:find("source") then
-		local block = text:match("```[Ll][Uu][Aa][Uu]?%s*(.-)%s*```") or text:match("```%s*(.-)%s*```")
-		if block and #block > 0 then return toolRun("exec", { code = block }, nil) end
-		return toolRun("read_script", { name = text:match("read%s+([%w%.%_%-]+)") or "" }, nil)
-	elseif t:find("run") or t:find("exec") or t:find("execute") or t:find("loadstring") or text:match("```") then
-		local block = text:match("```[Ll][Uu][Aa][Uu]?%s*(.-)%s*```") or text:match("```%s*(.-)%s*```")
-		return toolRun("exec", { code = block or text:match("[Rr][Uu][Nn]%s+(.+)") or text }, nil)
-	elseif t:find("server") or t:find("uptime") then
-		return toolRun("server_info", {}, nil)
-	elseif t:find("help") or t:find("command") or t:find("tool") or t:find("what can you") or t:find("book") or t:find("power") then
-		local lines = { "Hekz (executor) — NO RESTRICTION, Luau ONLY. Tools:" }
-		for n, on in pairs(CFG.Tools) do table.insert(lines, string.format(" - %s [%s]", n, on and "ON" or "OFF")) end
-		table.insert(lines, "Try: scan the map | parts near me | find Spawn | spawn a part | teleport me | read MyScript | run print('hi')")
-		return table.concat(lines, "\n")
-	else
-		return "Hekz here (executor, " .. EXEC_NAME .. "). You said: " .. text .. "\nI can: time | calc | scan | parts near | find | info | tree | spawn | teleport | read | exec Luau. Just ask."
-	end
+local function offlineNotice()
+	return "No AI key set — I can't think yet. Paste it in the AI KEY box above, tap AI mode, then just talk to me."
 end
 local function askAI(text)
 	local key = tostring(CFG.AIKey or "")
 	local model = tostring(CFG.AIModel or "")
 	local url = completionsURL(CFG.AIBase)
 	if url == "" or url == "/chat/completions" or key == "" or CFG.Mode ~= "ai" then
-		return routeLocal(text) .. ((CFG.Mode == "ai" and key == "") and "\n\n(tip: paste your key in the AI KEY box for full AI)" or "")
+		return offlineNotice()
 	end
 	local messages = { { role = "system", content = SYSTEM } }
 	local start = math.max(1, #history - 19)
@@ -689,23 +722,33 @@ local function askAI(text)
 	table.insert(messages, { role = "user", content = text:sub(1, 2000) })
 	local toolDefs = openAIDefs()
 	local rounds = math.max(1, math.min(tonumber(CFG.MaxRounds) or 4, 8))
+	local emptyRetries = 0
 	for _ = 1, rounds do
 		local body = { model = model, messages = messages, temperature = 0.7, max_tokens = 512 }
 		if #toolDefs > 0 then body.tools = toolDefs; body.tool_choice = "auto" end
 		local ok, dec = pcall(httpPOST, url, body, key)
 		if not ok then
-			return "AI unreachable (" .. tostring(dec):sub(1, 150) .. "). Using local brain.\n" .. routeLocal(text)
+			return "AI request failed (" .. tostring(dec):sub(1, 150) .. "). Try again in a bit."
 		end
 		if type(dec) ~= "table" or type(dec.choices) ~= "table" or #dec.choices == 0 then
 			local errM = ""
 			pcall(function() errM = tostring(dec.error and dec.error.message or "") end)
 			if errM:lower():find("tool") and #toolDefs > 0 then toolDefs = {} continue end
-			return routeLocal(text)
+			return "AI gave an unreadable reply (" .. tostring(errM):sub(1, 120) .. "). Try again."
 		end
 		local msg = dec.choices[1].message or {}
 		local content = tostring(msg.content or "")
 		local calls = msg.tool_calls
-		if type(calls) == "table" and #calls > 0 then
+		local hasCalls = type(calls) == "table" and #calls > 0
+		if not hasCalls and content:gsub("%s+", "") == "" then
+			if emptyRetries == 0 then
+				emptyRetries = 1
+				toolDefs = {}
+				continue
+			end
+			return "(empty reply)"
+		end
+		if hasCalls then
 			table.insert(messages, { role = "assistant", content = content, tool_calls = calls })
 			for _, tc in ipairs(calls) do
 				local fn = (tc and tc["function"]) or {}
@@ -729,8 +772,8 @@ local function askAI(text)
 				table.insert(messages, { role = "assistant", content = content })
 				table.insert(messages, { role = "user", content = "TOOL RESULT [" .. tname .. "]: " .. out:sub(1, 2000) })
 			else
-				if content == "" then return routeLocal(text) end
-				return content
+				if content == "" then return "(empty reply)" end
+				return content -- the model's own text, verbatim
 			end
 		end
 	end
@@ -739,7 +782,7 @@ local function askAI(text)
 			return tostring(messages[i].content)
 		end
 	end
-	return routeLocal(text)
+	return "(max rounds reached — ask me to continue)"
 end
 
 -- ============================== GUI (same dark H panel) ==============================
@@ -1208,14 +1251,38 @@ local function makeBubble(mine, nameText, bodyText, animate)
 	scrollDown()
 	return holder, msg
 end
+local streamBubble = nil -- forward: bots-style streaming reveal, defined below
 local function addChat(who, text)
 	text = tostring(text or "")
 	if text == "" then return end
 	if who == "You" then
 		makeBubble(true, "", text, true)
 	else
-		makeBubble(false, "HEKZ", text, true)
+		streamBubble(false, "HEKZ", text)
 	end
+end
+-- Bots-style streaming: reveal the reply token-by-token in its bubble
+streamBubble = function(mine, nameText, fullText)
+	fullText = tostring(fullText or ""):sub(1, 800)
+	local holder, msg = makeBubble(mine, nameText, "", false)
+	local n = #fullText
+	if n == 0 then return end
+	local step = math.max(2, math.floor(n / 80)) -- ~80 ticks whatever the length
+	local i, tick = 0, 0
+	while i < n do
+		if not holder.Parent then return end
+		i = math.min(n, i + step)
+		tick = tick + 1
+		pcall(function()
+			if msg.Parent then msg.Text = fullText:sub(1, i) end
+		end)
+		if tick % 4 == 0 then scrollDown() end
+		task.wait(0.015)
+	end
+	pcall(function()
+		if msg.Parent then msg.Text = fullText end
+	end)
+	scrollDown()
 end
 -- Typing indicator bubble ("..." pulsing) while the brain works
 local typingHolder, typingDots, typingStop = nil, nil, false
@@ -1464,12 +1531,9 @@ local function sendMsg()
 	showTyping()
 	task.spawn(function()
 		local reply
-		if CFG.Mode == "ai" and CFG.AIKey ~= "" then
-			local ok, res = pcall(askAI, msg)
-			reply = ok and res or ("BRAIN ERROR: " .. tostring(res):sub(1, 300))
-		else
-			reply = routeLocal(msg)
-		end
+		-- agent-first: the model thinks via askAI; without a key there is no brain
+		local ok, res = pcall(askAI, msg)
+		reply = ok and res or ("BRAIN ERROR: " .. tostring(res):sub(1, 300))
 		hideTyping()
 		pushHist("assistant", reply)
 		addChat("Hekz", reply)
