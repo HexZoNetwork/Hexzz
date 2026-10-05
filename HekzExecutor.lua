@@ -62,8 +62,9 @@ local function httpPOST(url, bodyTable, apiKey)
 	return HttpService:JSONDecode(res)
 end
 
-local function httpGETAuth(url, apiKey, maxChars)
-	maxChars = maxChars or 8000
+-- Authed GET that NEVER throws: returns (httpStatus, bodyString).
+-- status 0 = request itself blocked/failed (executor HTTP issue, not gateway).
+local function httpGETAuth(url, apiKey)
 	local headers = {}
 	if apiKey and apiKey ~= "" then
 		headers["Authorization"] = "Bearer " .. apiKey
@@ -71,14 +72,20 @@ local function httpGETAuth(url, apiKey, maxChars)
 	if REQ then
 		local ok, res = pcall(REQ, { Url = url, Method = "GET", Headers = headers })
 		if ok and type(res) == "table" then
-			return true, tostring(res.Body or res.body or "")
+			local code = tonumber(res.StatusCode or res.Status) or 0
+			return code, tostring(res.Body or res.body or "")
 		end
 	end
 	local ok, res = pcall(function()
 		return HttpService:RequestAsync({ Url = url, Method = "GET", Headers = headers })
 	end)
-	if not ok then return false, tostring(res) end
-	return true, tostring(res.Body or "")
+	if not ok then
+		return 0, "REQUEST FAILED: " .. tostring(res)
+	end
+	if type(res) ~= "table" then
+		return 0, "REQUEST FAILED: bad response"
+	end
+	return tonumber(res.StatusCode) or 0, tostring(res.Body or "")
 end
 
 -- OpenAI endpoint helpers: accept a base URL OR a full .../chat/completions URL
@@ -1311,11 +1318,27 @@ scanBtn.MouseButton1Click:Connect(function()
 	scanning = true
 	scanBtn.Text = "..."
 	task.spawn(function()
-		local ok, data = pcall(httpGETAuth, modelsURL(b), k, 12000)
+		local murl = modelsURL(b)
+		local status, data = httpGETAuth(murl, k)
+		data = tostring(data or "")
 		scanning = false
 		pcall(function() scanBtn.Text = "SCAN" end)
-		if not ok or type(data) ~= "string" or data == "" then
-			addChat("Hekz", "SCAN failed: " .. tostring(data):sub(1, 200) .. " — gateway must support OpenAI GET /models.")
+		if status == 0 then
+			addChat("Hekz", "SCAN: request blocked (" .. data:sub(1, 200) .. "). Your executor's HTTP is failing — try paste-method run, or a different executor.")
+			return
+		end
+		if status ~= 200 then
+			local why = ""
+			pcall(function()
+				local e = HttpService:JSONDecode(data)
+				if type(e) == "table" and type(e.error) == "table" and e.error.message then
+					why = " — " .. tostring(e.error.message):sub(1, 200)
+				elseif type(e) == "table" and e.message then
+					why = " — " .. tostring(e.message):sub(1, 200)
+				end
+			end)
+			if why == "" then why = " — " .. data:sub(1, 200) end
+			addChat("Hekz", "SCAN: HTTP " .. status .. why)
 			return
 		end
 		local dec = nil
@@ -1338,7 +1361,7 @@ scanBtn.MouseButton1Click:Connect(function()
 			if #ids == 0 and #dec > 0 then grab(dec) end
 		end
 		if #ids == 0 then
-			addChat("Hekz", "SCAN: no models found — gateway must support OpenAI GET /models. Type the id manually.")
+			addChat("Hekz", "SCAN: HTTP 200 but no model list in reply (" .. data:sub(1, 150) .. "). Type the id into MODEL by hand.")
 			return
 		end
 		for _, ch in ipairs(modelList:GetChildren()) do
