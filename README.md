@@ -88,11 +88,14 @@ Delta / Fluxus / Solara style executors.
    on first run — drag it by the header, close with **X**, reopen with **H**.
 5. Talk in the panel input (NOT bubble chat): `scan the map`,
    `parts near me`, `find Spawn`, `spawn a part`, `run print("hi")`.
-6. AI key (optional): paste it into the panel's **AI KEY** box → **SAVE**
-   (box clears, shows `key set (…XXXX)`), tap the **AI/LOCAL** pill to
-   green AI. Without a key it runs the offline brain (keywords still work).
-   Key stays on your client only. (`getgenv().HEKZ_AIKEY` before running
-   still works too.)
+6. AI setup (all in the panel, no pre-editing): paste the key into
+   **AI KEY**, set **API GATEWAY** (any OpenAI-completions base URL, e.g.
+   `https://api.openai.com/v1` — a full `.../chat/completions` URL works
+   too), then tap **SCAN** to list the gateway's `/models` and tap one
+   (or type the id into **MODEL** by hand) → **SAVE**, tap the **AI/LOCAL**
+   pill to green AI. Without a key it runs the offline brain (keywords
+   still work). Key stays on your client only.
+   (`getgenv().HEKZ_AIKEY` before running still works too.)
 
 **If nothing happens:**
 - Make sure you executed `HekzExecutor.lua`, not `HekzServer.lua`.

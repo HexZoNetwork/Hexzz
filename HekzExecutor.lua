@@ -62,6 +62,45 @@ local function httpPOST(url, bodyTable, apiKey)
 	return HttpService:JSONDecode(res)
 end
 
+local function httpGETAuth(url, apiKey, maxChars)
+	maxChars = maxChars or 8000
+	local headers = {}
+	if apiKey and apiKey ~= "" then
+		headers["Authorization"] = "Bearer " .. apiKey
+	end
+	if REQ then
+		local ok, res = pcall(REQ, { Url = url, Method = "GET", Headers = headers })
+		if ok and type(res) == "table" then
+			return true, tostring(res.Body or res.body or "")
+		end
+	end
+	local ok, res = pcall(function()
+		return HttpService:RequestAsync({ Url = url, Method = "GET", Headers = headers })
+	end)
+	if not ok then return false, tostring(res) end
+	return true, tostring(res.Body or "")
+end
+
+-- OpenAI endpoint helpers: accept a base URL OR a full .../chat/completions URL
+local function splitRoot(base)
+	local b = tostring(base or ""):gsub("%s+", ""):gsub("/+$", "")
+	local low = b:lower()
+	if low:sub(-16) == "/chat/completions" then
+		return b:sub(1, #b - 16):gsub("/+$", "")
+	end
+	return b
+end
+local function completionsURL(base)
+	local root = splitRoot(base)
+	if root == "" then return "" end
+	return root .. "/chat/completions"
+end
+local function modelsURL(base)
+	local root = splitRoot(base)
+	if root == "" then return "" end
+	return root .. "/models"
+end
+
 local function httpGET(url, maxChars)
 	maxChars = maxChars or 4000
 	if REQ then
@@ -626,13 +665,12 @@ local function routeLocal(text)
 	end
 end
 local function askAI(text)
-	local base = tostring(CFG.AIBase or ""):gsub("/+$", "")
 	local key = tostring(CFG.AIKey or "")
 	local model = tostring(CFG.AIModel or "")
-	if base == "" or key == "" or CFG.Mode ~= "ai" then
-		return routeLocal(text) .. ((CFG.Mode == "ai" and key == "") and "\n\n(tip: set getgenv().HEKZ_AIKEY then re-execute for full AI)" or "")
+	local url = completionsURL(CFG.AIBase)
+	if url == "" or url == "/chat/completions" or key == "" or CFG.Mode ~= "ai" then
+		return routeLocal(text) .. ((CFG.Mode == "ai" and key == "") and "\n\n(tip: paste your key in the AI KEY box for full AI)" or "")
 	end
-	local url = base .. "/chat/completions"
 	local messages = { { role = "system", content = SYSTEM } }
 	local start = math.max(1, #history - 19)
 	for i = start, #history do
@@ -909,9 +947,76 @@ modeBtn.AutoButtonColor = false
 modeBtn.Parent = panel
 local mCorner = Instance.new("UICorner") mCorner.CornerRadius = UDim.new(0, 10) mCorner.Parent = modeBtn
 
+-- Custom OpenAI gateway (base URL) + model — OpenAI completions, your endpoint
+local baseLabel = Instance.new("TextLabel")
+baseLabel.Size = UDim2.new(1, -24, 0, 16)
+baseLabel.Position = UDim2.new(0, 12, 0, 118)
+baseLabel.BackgroundTransparency = 1
+baseLabel.Text = "API GATEWAY (OpenAI completions base URL)"
+baseLabel.Font = Enum.Font.GothamBold
+baseLabel.TextSize = 11
+baseLabel.TextXAlignment = Enum.TextXAlignment.Left
+baseLabel.TextColor3 = DIM
+baseLabel.Parent = panel
+
+local baseBox = Instance.new("TextBox")
+baseBox.Size = UDim2.new(1, -24, 0, 32)
+baseBox.Position = UDim2.new(0, 12, 0, 136)
+baseBox.BackgroundColor3 = SURF
+baseBox.PlaceholderText = "https://api.openai.com/v1"
+baseBox.PlaceholderColor3 = DIM
+baseBox.Text = tostring(CFG.AIBase or "")
+baseBox.Font = Enum.Font.Gotham
+baseBox.TextSize = 12
+baseBox.TextColor3 = TXT
+baseBox.ClearTextOnFocus = false
+baseBox.Parent = panel
+local bCorner = Instance.new("UICorner") bCorner.CornerRadius = UDim.new(0, 10) bCorner.Parent = baseBox
+local bStroke = Instance.new("UIStroke") bStroke.Color = BORDER bStroke.Parent = baseBox
+
+local modelLabel = Instance.new("TextLabel")
+modelLabel.Size = UDim2.new(1, -24, 0, 16)
+modelLabel.Position = UDim2.new(0, 12, 0, 174)
+modelLabel.BackgroundTransparency = 1
+modelLabel.Text = "MODEL"
+modelLabel.Font = Enum.Font.GothamBold
+modelLabel.TextSize = 11
+modelLabel.TextXAlignment = Enum.TextXAlignment.Left
+modelLabel.TextColor3 = DIM
+modelLabel.Parent = panel
+
+local modelBox = Instance.new("TextBox")
+modelBox.Size = UDim2.new(1, -80, 0, 32)
+modelBox.Position = UDim2.new(0, 12, 0, 192)
+modelBox.BackgroundColor3 = SURF
+modelBox.PlaceholderText = "e.g. gpt-4o-mini"
+modelBox.PlaceholderColor3 = DIM
+modelBox.Text = tostring(CFG.AIModel or "")
+modelBox.Font = Enum.Font.Gotham
+modelBox.TextSize = 12
+modelBox.TextColor3 = TXT
+modelBox.ClearTextOnFocus = false
+modelBox.Parent = panel
+local moCorner = Instance.new("UICorner") moCorner.CornerRadius = UDim.new(0, 10) moCorner.Parent = modelBox
+local moStroke = Instance.new("UIStroke") moStroke.Color = BORDER moStroke.Parent = modelBox
+
+local scanBtn = Instance.new("TextButton")
+scanBtn.Name = "ScanModels"
+scanBtn.Size = UDim2.new(0, 56, 0, 32)
+scanBtn.Position = UDim2.new(1, -64, 0, 192)
+scanBtn.BackgroundColor3 = SURF
+scanBtn.Text = "SCAN"
+scanBtn.Font = Enum.Font.GothamBold
+scanBtn.TextSize = 11
+scanBtn.TextColor3 = TXT
+scanBtn.AutoButtonColor = false
+scanBtn.Parent = panel
+local scCorner = Instance.new("UICorner") scCorner.CornerRadius = UDim.new(0, 10) scCorner.Parent = scanBtn
+local scStroke = Instance.new("UIStroke") scStroke.Color = BORDER scStroke.Parent = scanBtn
+
 local togLabel = Instance.new("TextLabel")
 togLabel.Size = UDim2.new(1, -24, 0, 16)
-togLabel.Position = UDim2.new(0, 12, 0, 118)
+togLabel.Position = UDim2.new(0, 12, 0, 230)
 togLabel.BackgroundTransparency = 1
 togLabel.Text = "TOGGLES"
 togLabel.Font = Enum.Font.GothamBold
@@ -921,8 +1026,8 @@ togLabel.TextColor3 = DIM
 togLabel.Parent = panel
 
 local list = Instance.new("ScrollingFrame")
-list.Size = UDim2.new(1, -24, 0, 120)
-list.Position = UDim2.new(0, 12, 0, 136)
+list.Size = UDim2.new(1, -24, 0, 90)
+list.Position = UDim2.new(0, 12, 0, 248)
 list.BackgroundTransparency = 1
 list.ScrollBarThickness = 4
 list.ScrollBarImageColor3 = BORDER
@@ -935,7 +1040,7 @@ layout.Parent = list
 
 local chatLabel = Instance.new("TextLabel")
 chatLabel.Size = UDim2.new(1, -24, 0, 16)
-chatLabel.Position = UDim2.new(0, 12, 0, 264)
+chatLabel.Position = UDim2.new(0, 12, 0, 346)
 chatLabel.BackgroundTransparency = 1
 chatLabel.Text = "CHAT"
 chatLabel.Font = Enum.Font.GothamBold
@@ -945,8 +1050,8 @@ chatLabel.TextColor3 = DIM
 chatLabel.Parent = panel
 
 local chatLog = Instance.new("ScrollingFrame")
-chatLog.Size = UDim2.new(1, -24, 0, 180)
-chatLog.Position = UDim2.new(0, 12, 0, 282)
+chatLog.Size = UDim2.new(1, -24, 0, 160)
+chatLog.Position = UDim2.new(0, 12, 0, 364)
 chatLog.BackgroundColor3 = SURF
 chatLog.BorderSizePixel = 0
 chatLog.ScrollBarThickness = 4
@@ -959,6 +1064,31 @@ local chatLayout = Instance.new("UIListLayout")
 chatLayout.Padding = UDim.new(0, 6)
 chatLayout.SortOrder = Enum.SortOrder.LayoutOrder
 chatLayout.Parent = chatLog
+
+-- Model picker dropdown (overlay over chat, filled by SCAN from <gateway>/models)
+local modelList = Instance.new("ScrollingFrame")
+modelList.Name = "ModelList"
+modelList.Size = UDim2.new(1, -24, 0, 160)
+modelList.Position = UDim2.new(0, 12, 0, 364)
+modelList.BackgroundColor3 = BG
+modelList.BorderSizePixel = 0
+modelList.ScrollBarThickness = 4
+modelList.ScrollBarImageColor3 = BORDER
+modelList.CanvasSize = UDim2.new(0, 0, 0, 0)
+modelList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+modelList.Visible = false
+modelList.ZIndex = 30
+modelList.Parent = panel
+local mlCorner = Instance.new("UICorner") mlCorner.CornerRadius = UDim.new(0, 12) mlCorner.Parent = modelList
+local mlStroke = Instance.new("UIStroke") mlStroke.Color = ACCENT mlStroke.Thickness = 1 mlStroke.Parent = modelList
+local mlLayout = Instance.new("UIListLayout")
+mlLayout.Padding = UDim.new(0, 6)
+mlLayout.SortOrder = Enum.SortOrder.LayoutOrder
+mlLayout.Parent = modelList
+local mlPad = Instance.new("UIPadding")
+mlPad.PaddingTop = UDim.new(0, 8) mlPad.PaddingBottom = UDim.new(0, 8)
+mlPad.PaddingLeft = UDim.new(0, 8) mlPad.PaddingRight = UDim.new(0, 8)
+mlPad.Parent = modelList
 
 local input = Instance.new("TextBox")
 input.Size = UDim2.new(1, -68, 0, 38)
@@ -1118,17 +1248,30 @@ if CFG.AIKey ~= "" then
 end
 saveBtn.MouseButton1Click:Connect(function()
 	local k = keyBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
-	if k == "" then return end
-	CFG.AIKey = k
+	local b = baseBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+	local m = modelBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+	if k ~= "" then
+		CFG.AIKey = k
+		keyBox.Text = ""
+		keyBox.PlaceholderText = maskKey(k)
+	end
+	if b ~= "" then
+		CFG.AIBase = b
+		baseBox.Text = b
+	end
+	if m ~= "" then
+		CFG.AIModel = m
+		modelBox.Text = m
+	end
 	pcall(function()
 		local gg = getgenv and getgenv() or _G
-		gg.HEKZ_AIKEY = k
-		if gg.HEKZ then gg.HEKZ.AIKey = k end
+		if k ~= "" then gg.HEKZ_AIKEY = CFG.AIKey end
+		gg.HEKZ_AIBASE = CFG.AIBase
+		gg.HEKZ_MODEL = CFG.AIModel
+		if gg.HEKZ then gg.HEKZ.AIBase, gg.HEKZ.AIModel, gg.HEKZ.AIKey = CFG.AIBase, CFG.AIModel, CFG.AIKey end
 	end)
-	keyBox.Text = ""
-	keyBox.PlaceholderText = maskKey(k)
 	refreshSub()
-	addChat("Hekz", "Key saved (…" .. k:sub(-4) .. "). Set mode to AI and talk.")
+	addChat("Hekz", "Saved. Gateway: " .. tostring(CFG.AIBase) .. " | model: " .. tostring(CFG.AIModel) .. ((k ~= "") and (" | key …" .. k:sub(-4)) or ""))
 end)
 modeBtn.MouseButton1Click:Connect(function()
 	CFG.Mode = (CFG.Mode == "ai") and "local" or "ai"
@@ -1136,6 +1279,92 @@ modeBtn.MouseButton1Click:Connect(function()
 	tween(modeBtn, { BackgroundColor3 = (CFG.Mode == "ai") and ONC or OFFC }, 0.18)
 	refreshSub()
 	addChat("Hekz", "Mode: " .. CFG.Mode .. ((CFG.Mode == "ai" and CFG.AIKey == "") and " (no key yet — paste it above)" or ""))
+end)
+
+-- SCAN: list models from <gateway>/models (OpenAI style), tap to select
+local scanning = false
+local function pickModel(id)
+	CFG.AIModel = id
+	modelBox.Text = id
+	pcall(function()
+		local gg = getgenv and getgenv() or _G
+		gg.HEKZ_MODEL = id
+		if gg.HEKZ then gg.HEKZ.AIModel = id end
+	end)
+	modelList.Visible = false
+	addChat("Hekz", "Model: " .. id)
+end
+scanBtn.MouseButton1Click:Connect(function()
+	if scanning then return end
+	local b = baseBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+	if b == "" then b = tostring(CFG.AIBase or "") end
+	if b == "" then
+		addChat("Hekz", "Set the API GATEWAY first, then SCAN.")
+		return
+	end
+	if modelList.Visible then
+		modelList.Visible = false
+		return
+	end
+	local k = keyBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+	if k == "" then k = tostring(CFG.AIKey or "") end
+	scanning = true
+	scanBtn.Text = "..."
+	task.spawn(function()
+		local ok, data = pcall(httpGETAuth, modelsURL(b), k, 12000)
+		scanning = false
+		pcall(function() scanBtn.Text = "SCAN" end)
+		if not ok or type(data) ~= "string" or data == "" then
+			addChat("Hekz", "SCAN failed: " .. tostring(data):sub(1, 200) .. " — gateway must support OpenAI GET /models.")
+			return
+		end
+		local dec = nil
+		pcall(function() dec = HttpService:JSONDecode(data) end)
+		local ids = {}
+		local function grab(arr)
+			if type(arr) ~= "table" then return end
+			for _, it in ipairs(arr) do
+				if type(it) == "string" then
+					table.insert(ids, it)
+				elseif type(it) == "table" and type(it.id) == "string" then
+					table.insert(ids, it.id)
+				end
+				if #ids >= 50 then break end
+			end
+		end
+		if type(dec) == "table" then
+			grab(dec.data)
+			if #ids == 0 then grab(dec.models) end
+			if #ids == 0 and #dec > 0 then grab(dec) end
+		end
+		if #ids == 0 then
+			addChat("Hekz", "SCAN: no models found — gateway must support OpenAI GET /models. Type the id manually.")
+			return
+		end
+		for _, ch in ipairs(modelList:GetChildren()) do
+			if ch:IsA("TextButton") then pcall(function() ch:Destroy() end) end
+		end
+		for i, id in ipairs(ids) do
+			local btn = Instance.new("TextButton")
+			btn.LayoutOrder = i
+			btn.Size = UDim2.new(1, -4, 0, 30)
+			btn.AutomaticSize = Enum.AutomaticSize.Y
+			btn.BackgroundColor3 = (id == CFG.AIModel) and ACCENT or SURF
+			btn.Text = "  " .. id
+			btn.Font = Enum.Font.Gotham
+			btn.TextSize = 12
+			btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+			btn.TextXAlignment = Enum.TextXAlignment.Left
+			btn.TextWrapped = true
+			btn.AutoButtonColor = false
+			btn.Parent = modelList
+			local cc = Instance.new("UICorner") cc.CornerRadius = UDim.new(0, 8) cc.Parent = btn
+			btn.MouseButton1Click:Connect(function() pickModel(id) end)
+		end
+		modelList.Visible = true
+		modelList.CanvasPosition = Vector2.new(0, 0)
+		addChat("Hekz", "SCAN: " .. #ids .. " models — tap one. (SCAN again to hide.)")
+	end)
 end)
 
 -- Toggles (local only, no server to sync to)
